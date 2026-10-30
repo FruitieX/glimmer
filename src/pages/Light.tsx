@@ -22,6 +22,11 @@ import {
 } from "../api";
 import { frames, useGallery, useStatus } from "../live";
 import { EffectCard } from "../components/EffectCard";
+import {
+  categoryOf,
+  CategoryChips,
+  groupByCategory,
+} from "../components/Categories";
 import { DeviceSettingsDialog } from "./DeviceSettings";
 import { Link, useApp, useRoute } from "../main";
 import { Mirror } from "../components/Mirror";
@@ -81,6 +86,10 @@ function Light({
   const meta = script?.meta;
   const { run } = useAction();
   const gallery = useGallery("effect", fixture.id);
+  const groups = groupByCategory(effects);
+  const [category, setCategory] = useState(() =>
+    script ? categoryOf(script) : (groups[0]?.[0] ?? "Basics"),
+  );
   const [settings, setSettings] = useState(false);
 
   // Local copies so sliders feel instant; the server echo replaces them.
@@ -247,9 +256,15 @@ function Light({
       />
 
       <Section title="Effect">
+        <CategoryChips
+          groups={groups}
+          value={category}
+          onChange={setCategory}
+          all={false}
+        />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {layout?.points.length
-            ? effects.map((e) => {
+            ? (groups.find(([c]) => c === category)?.[1] ?? []).map((e) => {
                 const active = e.id === item.state.look.scriptId;
                 return (
                   <EffectCard

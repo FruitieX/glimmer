@@ -160,7 +160,7 @@ function Editor({
         params: previewParams,
         colors: colorValues(meta ?? undefined, previewColors),
       }).catch((e) => toast(e.message, "bad"));
-    }, 400);
+    }, 150);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trying, source, previewParams, previewColors]);

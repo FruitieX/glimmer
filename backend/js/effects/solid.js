@@ -1,6 +1,7 @@
 export const meta = {
   name: "Solid",
   description: "One steady colour, optionally breathing gently.",
+  category: "Basics",
   colors: [{ id: "primary", label: "Colour", default: "#ffb46b" }],
   params: {
     breathe: { type: "number", label: "Breathing", min: 0, max: 1, step: 0.01, default: 0 },

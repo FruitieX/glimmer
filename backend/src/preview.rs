@@ -1,0 +1,136 @@
+//! `glimmer preview <script.js> <out.png> [seconds] [frames]`: renders a
+//! contact sheet of an effect (or transition) without any lights, for
+//! checking scripts by eye. Each frame shows a 10 × 21 curtain and, below
+//! it, a 120-LED straight string.
+
+use crate::script::{Rgb, Scripts};
+use image::{Rgb as Px, RgbImage};
+use std::time::Instant;
+
+const CELL: u32 = 9;
+
+fn curtain() -> Vec<[f32; 3]> {
+    (0..210)
+        .map(|i| [(i / 21) as f32 / 9.0, 1.0 - (i % 21) as f32 / 20.0, 0.5])
+        .collect()
+}
+
+fn strip() -> Vec<[f32; 3]> {
+    (0..120).map(|i| [i as f32 / 119.0, 0.5, 0.5]).collect()
+}
+
+fn dot(img: &mut RgbImage, cx: u32, cy: u32, c: &[f32]) {
+    let px = Px([
+        (c[0].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[1].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[2].clamp(0.0, 1.0) * 255.0) as u8,
+    ]);
+    for dy in 0..CELL - 2 {
+        for dx in 0..CELL - 2 {
+            img.put_pixel(cx + dx, cy + dy, px);
+        }
+    }
+}
+
+pub fn run(path: &str, out: &str, seconds: f64, frames: usize) -> Result<(), String> {
+    let source = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    // A transition fails when rendered as an effect (it has no frames to blend).
+    let (transition, (meta, avg)) = match Scripts::check(&source, false) {
+        Ok(r) => (false, r),
+        Err(effect_error) => match Scripts::check(&source, true) {
+            Ok(r) => (true, r),
+            Err(_) => return Err(effect_error),
+        },
+    };
+    let scripts = Scripts::new()?;
+    let m = scripts.register("s", &source)?;
+    let colors: Vec<Rgb> = m
+        .colors
+        .iter()
+        .filter_map(|c| crate::color::parse_hex(&c.default))
+        .collect();
+    let layouts = [("c", curtain(), 10.0 / 21.0 * 2.0), ("s", strip(), 20.0)];
+    for (id, pts, aspect) in &layouts {
+        scripts.layout(id, pts, *aspect)?;
+        scripts.create(&format!("i{id}"), "s", id, &serde_json::json!({}), &colors)?;
+        if transition {
+            scripts.register("from", crate::builtin::source("rainbow").unwrap())?;
+            scripts.register("to", crate::builtin::source("twinkle").unwrap())?;
+            scripts.create(&format!("f{id}"), "from", id, &serde_json::json!({}), &[])?;
+            scripts.create(
+                &format!("t{id}"),
+                "to",
+                id,
+                &serde_json::json!({}),
+                &[[1.0, 0.95, 0.85], [0.1, 0.15, 0.4]],
+            )?;
+        }
+    }
+    let cols = 6u32;
+    let rows = (frames as u32).div_ceil(cols);
+    let pw = 10 * CELL + 12;
+    let ph = 21 * CELL + 2 * CELL + 16;
+    let sw = pw * cols;
+    let mut img = RgbImage::from_pixel(sw, ph * rows, Px([10, 10, 16]));
+    let mut slowest = 0.0f64;
+    for f in 0..frames {
+        let t = seconds * f as f64 / frames.max(1) as f64;
+        let (ox, oy) = ((f as u32 % cols) * pw + 6, (f as u32 / cols) * ph + 6);
+        for (id, pts, _) in &layouts {
+            let mut buf = vec![0.0; pts.len() * 3];
+            let start = Instant::now();
+            if transition {
+                let mut a = vec![0.0; buf.len()];
+                let mut b = vec![0.0; buf.len()];
+                scripts.render(&format!("f{id}"), t, 0.04, &mut a)?;
+                scripts.render(&format!("t{id}"), t, 0.04, &mut b)?;
+                let p = f as f64 / (frames.max(2) - 1) as f64;
+                scripts.blend(&format!("i{id}"), Some(&a), Some(&b), p, t, 0.04, &mut buf)?;
+            } else {
+                // Step through time so stateful simulations see real dt.
+                scripts.render(
+                    &format!("i{id}"),
+                    t,
+                    seconds / frames.max(1) as f64,
+                    &mut buf,
+                )?;
+            }
+            slowest = slowest.max(start.elapsed().as_secs_f64() * 1000.0);
+            for (i, c) in buf.chunks(3).enumerate() {
+                if *id == "c" {
+                    dot(
+                        &mut img,
+                        ox + (i as u32 / 21) * CELL,
+                        oy + (i as u32 % 21) * CELL,
+                        c,
+                    );
+                } else {
+                    // The strip wraps onto two rows of 60 under the curtain.
+                    let (col, row) = (i as u32 % 60, i as u32 / 60);
+                    let x = ox + col * (pw - 12) / 60;
+                    let y = oy + 21 * CELL + 4 + row * (CELL - 2);
+                    let px = Px([
+                        (c[0].clamp(0.0, 1.0) * 255.0) as u8,
+                        (c[1].clamp(0.0, 1.0) * 255.0) as u8,
+                        (c[2].clamp(0.0, 1.0) * 255.0) as u8,
+                    ]);
+                    for dy in 0..CELL - 4 {
+                        img.put_pixel(x, y + dy, px);
+                        img.put_pixel(x + 1, y + dy, px);
+                    }
+                }
+            }
+        }
+    }
+    img.save(out).map_err(|e| e.to_string())?;
+    println!(
+        "{} ({}): {frames} frames over {seconds} s written to {out}; check frame {:.2} ms, slowest {slowest:.2} ms; category {:?}, antialias {}, loops {}",
+        meta.name,
+        if transition { "transition" } else { "effect" },
+        avg.as_secs_f64() * 1000.0,
+        meta.category,
+        meta.antialias,
+        meta.loops
+    );
+    Ok(())
+}

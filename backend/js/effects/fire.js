@@ -1,6 +1,7 @@
 export const meta = {
   name: "Fire",
   description: "Flames licking upwards, hottest at the bottom.",
+  category: "Nature",
   colors: [
     { id: "hot", label: "Core", default: "#ffd166" },
     { id: "warm", label: "Flame", default: "#ff5400" },

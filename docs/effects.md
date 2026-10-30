@@ -10,6 +10,10 @@ An effect exports `meta` and `render(ctx)`, and optionally `setup(ctx)` and `loo
 export const meta = {
   name: "Aurora",
   description: "Slow northern-lights curtains drifting sideways.",
+  // Where the app lists it; one of the categories below.
+  category: "Nature",
+  // Optional: render at sub-LED offsets and average (see Smooth edges).
+  antialias: false,
   // Colour slots the user (and homectl) can change. Defaults are "#rrggbb".
   colors: [
     { id: "glow", label: "Glow", default: "#2bff88" },
@@ -64,6 +68,7 @@ export function render(ctx, state) {
 | `x`, `y`, `z` | `Float32Array`s of LED positions, each normalised to 0..1 across the fixture: `x` left→right, `y` bottom→top, `z` back→front. Flat or unmapped fixtures have 0.5 on unused axes. |
 | `u`           | `Float32Array`, position along the wire, 0 at the first LED and 1 at the last.                                                                                                   |
 | `aspect`      | Width / height of the fixture before normalisation.                                                                                                                              |
+| `spacing`     | Typical distance between neighbouring LEDs in the same 0..1 units, e.g. for edges one LED wide.                                                                                  |
 | `t`           | Seconds since the effect started.                                                                                                                                                |
 | `dt`          | Seconds since the previous frame.                                                                                                                                                |
 | `params`      | Current parameter values (defaults filled in).                                                                                                                                   |
@@ -73,6 +78,25 @@ export function render(ctx, state) {
 Values are perceptual (like CSS colours); the app applies brightness, gamma, white balance and the RGBW white channel afterwards. Keep `render` fast: a frame should take well under a millisecond for a few hundred LEDs. Allocate arrays in `setup`, not per frame. A script that runs longer than 250 ms is stopped.
 
 Prefer smooth motion and gentle colour, avoid harsh full-brightness strobing, and make every parameter visibly change something. Use `ctx.t` rather than counting frames so the speed doesn't depend on the frame rate. Use `ctx.dt` only for simulations that keep state.
+
+### Categories
+
+Set `meta.category` to one of: `Basics`, `Gradients & patterns`, `Plasma & flow`, `Nature`, `Particles & physics`, `Simulations & games`, `Fractals`, `Seasonal`, `Images`.
+
+### Smooth edges
+
+LEDs are few and far apart, so anything sharp (a comet's head, a bar's edge, a dot) jumps from LED to LED and steps visibly as it moves. There are two ways to avoid that:
+
+- Draw soft shapes yourself: fade brightness over about one `ctx.spacing` (or one LED along `u`, which is `1 / (n - 1)`), for example `smoothstep(edge - ctx.spacing, edge + ctx.spacing, x[i])` instead of `x[i] > edge`.
+- Or set `meta.antialias: true`. The app then renders every frame four times with the LED positions (`x`, `y`, `u`) moved slightly within each LED's area and averages the results, so a hard edge covers an LED partially as it moves. This costs four renders per frame. Only use it for effects whose `render` is a pure function of `ctx` (no state changed between frames).
+
+### Simulations and state
+
+Effects that simulate (particles, fluids, cellular automata, games) keep their state in the object returned by `setup(ctx)` and advance it in `render` using `ctx.dt` (seconds since the previous frame, which varies). Step at a fixed rate when the rules need it, e.g. accumulate `dt` and run one game tick every 0.15 s. Don't export `loop` or set `antialias` for such effects. Map the simulation onto LEDs by position (`x`, `y`), not by index, so it suits any layout. A grid of about 10 × 20 cells usually matches a curtain.
+
+### Images
+
+`image(id)` returns an uploaded image or GIF (`width`, `height`, `frames`, `delays`, `duration` in seconds), `imageFrame(img, t)` picks the frame for a time, and `sampleImage(img, frame, x, y)` returns its colour at a position (0..1, y up). Effects made with "Create from GIF" use these; the id is fixed in the generated script.
 
 ### Parameter types
 

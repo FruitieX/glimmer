@@ -1,6 +1,7 @@
 export const meta = {
   name: "Snowfall",
   description: "Flakes drifting down over a cold sky.",
+  category: "Nature",
   colors: [
     { id: "sky", label: "Sky", default: "#0b1d51" },
     { id: "snow", label: "Snow", default: "#ffffff" },

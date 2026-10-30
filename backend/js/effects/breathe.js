@@ -1,6 +1,7 @@
 export const meta = {
   name: "Colour cycle",
   description: "The whole string slowly breathes through the chosen colours.",
+  category: "Basics",
   colors: [
     { id: "a", label: "First", default: "#ff006e" },
     { id: "b", label: "Second", default: "#8338ec" },

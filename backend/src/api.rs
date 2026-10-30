@@ -18,6 +18,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::Digest;
 
 type S = State<Server>;
 
@@ -54,6 +55,10 @@ pub fn routes() -> Router<Server> {
         .route("/api/scripts/{id}/versions/{version}", get(script_version))
         .route("/api/scripts/{id}/restore", post(restore_script))
         .route("/api/ai/generate", post(generate))
+        .route(
+            "/api/images",
+            post(upload_image).layer(axum::extract::DefaultBodyLimit::max(20 * 1024 * 1024)),
+        )
         .route("/api/docs/effects", get(effect_docs))
 }
 
@@ -417,7 +422,10 @@ async fn try_draft(
     s.user(&headers)?;
     let source = body.source.clone();
     blocking(move || Scripts::check(&source, false).map(|_| ())).await?;
-    let version = -(db::now() * 1000 + rand::random_range(0..1000));
+    // The same code keeps the same version, so trying settings doesn't restart it.
+    let digest = sha2::Sha256::digest(body.source.as_bytes());
+    let version =
+        -(i64::from_le_bytes(digest[..8].try_into().unwrap_or_default()) & 0x7fff_ffff_ffff);
     s.app.try_draft(
         &id,
         ScriptSource {
@@ -745,4 +753,50 @@ async fn generate(
 async fn effect_docs(State(s): S, headers: HeaderMap) -> Result<String> {
     s.user(&headers)?;
     Ok(include_str!("../../docs/effects.md").to_string())
+}
+
+#[derive(Deserialize)]
+struct UploadQuery {
+    name: Option<String>,
+}
+
+/// Stores an uploaded GIF/PNG/JPEG and creates an effect that plays it.
+async fn upload_image(
+    State(s): S,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<UploadQuery>,
+    body: axum::body::Bytes,
+) -> Result<Json<db::ScriptInfo>> {
+    let user = s.user(&headers)?;
+    let app = s.app.clone();
+    let info = blocking(move || {
+        let asset = crate::images::decode(&body)?;
+        let name = q
+            .name
+            .map(|n| {
+                n.trim()
+                    .trim_end_matches(".gif")
+                    .trim_end_matches(".png")
+                    .to_string()
+            })
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "Image".into());
+        let id = format!("img-{}", &crate::web::token()[..10]);
+        let db = app.db()?;
+        crate::images::save(&db, &id, &name, &asset)?;
+        let script_id = db::new_script_id(&db, &name)?;
+        let source = crate::images::effect_source(&id, &name);
+        db::save_script(
+            &db,
+            &script_id,
+            ScriptKind::Effect,
+            &source,
+            "Created from an image",
+            &user,
+            false,
+        )
+    })
+    .await?;
+    s.app.changed();
+    Ok(Json(info))
 }

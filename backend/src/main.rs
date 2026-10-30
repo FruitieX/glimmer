@@ -6,10 +6,12 @@ mod color;
 mod db;
 mod device;
 mod engine;
+mod images;
 mod layout;
 mod model;
 mod mqtt;
 mod oidc;
+mod preview;
 mod script;
 mod web;
 mod ws;
@@ -99,6 +101,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("preview") {
+        let (Some(script), Some(out)) = (args.get(2), args.get(3)) else {
+            return Err("usage: glimmer preview <script.js> <out.png> [seconds] [frames]".into());
+        };
+        let seconds = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(8.0);
+        let frames = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(18);
+        preview::run(script, out, seconds, frames)?;
+        return Ok(());
+    }
     if args.get(1).map(String::as_str) == Some("probe") {
         let ip = args
             .get(2)
@@ -161,7 +172,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let ai = ai::Ai::from_env();
-    let app = app::App::new(conn, ai);
+    let images = rusqlite::Connection::open_with_flags(
+        &path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    images.busy_timeout(std::time::Duration::from_secs(5))?;
+    let app = app::App::new(conn, images, ai);
     if let Some(seed) = env("GLIMMER_SEED") {
         let json = if seed.starts_with('[') {
             seed

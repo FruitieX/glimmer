@@ -1,6 +1,7 @@
 export const meta = {
   name: "Plasma",
   description: "Flowing interference patterns blended through a palette.",
+  category: "Plasma & flow",
   colors: [
     { id: "a", label: "First", default: "#7400b8" },
     { id: "b", label: "Second", default: "#48bfe3" },

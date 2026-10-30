@@ -1,6 +1,7 @@
 export const meta = {
   name: "Twinkle",
   description: "A soft base colour with stars that fade in and out.",
+  category: "Nature",
   colors: [
     { id: "base", label: "Base", default: "#1b2a6b" },
     { id: "star", label: "Stars", default: "#fff4d6" },

@@ -108,8 +108,24 @@ pub fn new_fixture(id: &str, device: &Device, start: usize, count: usize, sort: 
 }
 
 impl App {
-    pub fn new(db: Connection, ai: Option<Ai>) -> Arc<Self> {
+    /// `images` is a separate connection for scripts' `image(id)`: scripts
+    /// also run while `db` is locked (checking a script before saving it).
+    pub fn new(db: Connection, images: Connection, ai: Option<Ai>) -> Arc<Self> {
         let db = Arc::new(Mutex::new(db));
+        {
+            // Scripts' image(id) reads uploads once and keeps them in memory.
+            let db = Mutex::new(images);
+            let cache: Mutex<std::collections::HashMap<String, Arc<crate::script::ImageAsset>>> =
+                Mutex::default();
+            let _ = crate::script::IMAGES.set(Arc::new(move |id: &str| {
+                if let Some(a) = cache.lock().ok()?.get(id) {
+                    return Some(a.clone());
+                }
+                let asset = Arc::new(crate::images::load(&*db.lock().ok()?, id).ok()??);
+                cache.lock().ok()?.insert(id.to_string(), asset.clone());
+                Some(asset)
+            }));
+        }
         let lookup = {
             let db = db.clone();
             Arc::new(move |id: &str| -> Option<ScriptSource> {

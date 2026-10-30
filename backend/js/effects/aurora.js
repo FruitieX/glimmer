@@ -1,6 +1,7 @@
 export const meta = {
   name: "Aurora",
   description: "Slow northern-lights curtains drifting sideways.",
+  category: "Nature",
   colors: [
     { id: "a", label: "Glow", default: "#2bff88" },
     { id: "b", label: "Edge", default: "#7b2ff7" },

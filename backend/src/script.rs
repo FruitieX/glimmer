@@ -17,6 +17,22 @@ use std::{
 
 pub type Rgb = [f32; 3];
 
+/// An uploaded image or GIF, scaled down to LED-friendly size.
+#[derive(Debug)]
+pub struct ImageAsset {
+    pub width: u32,
+    pub height: u32,
+    /// RGB bytes per frame.
+    pub frames: Vec<Vec<u8>>,
+    /// Seconds per frame.
+    pub delays: Vec<f32>,
+}
+
+pub type ImageLoader = Arc<dyn Fn(&str) -> Option<Arc<ImageAsset>> + Send + Sync>;
+
+/// Where scripts' `image(id)` finds uploaded images; set once at startup.
+pub static IMAGES: std::sync::OnceLock<ImageLoader> = std::sync::OnceLock::new();
+
 const PRELUDE: &str = include_str!("../js/prelude.js");
 
 /// What a script declares about itself.
@@ -30,6 +46,12 @@ pub struct Meta {
     pub params: serde_json::Map<String, serde_json::Value>,
     #[serde(default)]
     pub colors: Vec<ColorSlot>,
+    /// Group shown in the app, e.g. "Seasonal".
+    #[serde(default)]
+    pub category: String,
+    /// Rendered at several sub-LED offsets and averaged (stateless effects only).
+    #[serde(default)]
+    pub antialias: bool,
     /// Whether the script exports `loop(params, colors)`, i.e. can repeat seamlessly.
     #[serde(default)]
     pub loops: bool,
@@ -74,6 +96,23 @@ fn error_text(ctx: &Ctx<'_>, error: rquickjs::Error) -> String {
     error.to_string()
 }
 
+/// `__loadImage(id)` for the prelude's `image()`: the asset, or null.
+fn load_image<'js>(ctx: Ctx<'js>, id: String) -> rquickjs::Result<Value<'js>> {
+    let Some(asset) = IMAGES.get().and_then(|load| load(&id)) else {
+        return Ok(Value::new_null(ctx));
+    };
+    let obj = Object::new(ctx.clone())?;
+    obj.set("width", asset.width)?;
+    obj.set("height", asset.height)?;
+    obj.set("delays", asset.delays.clone())?;
+    let frames = rquickjs::Array::new(ctx.clone())?;
+    for (i, f) in asset.frames.iter().enumerate() {
+        frames.set(i, rquickjs::ArrayBuffer::new(ctx.clone(), f.clone())?)?;
+    }
+    obj.set("frames", frames)?;
+    Ok(obj.into_value())
+}
+
 fn js_json<'js>(ctx: &Ctx<'js>, value: &impl Serialize) -> rquickjs::Result<Value<'js>> {
     ctx.json_parse(serde_json::to_string(value).unwrap_or_else(|_| "null".into()))
 }
@@ -99,7 +138,11 @@ impl Scripts {
             deadline,
             budget: Duration::from_millis(250),
         };
-        scripts.run(|ctx| ctx.eval::<(), _>(PRELUDE))?;
+        scripts.run(|ctx| {
+            let load = rquickjs::Function::new(ctx.clone(), load_image)?;
+            ctx.globals().set("__loadImage", load)?;
+            ctx.eval::<(), _>(PRELUDE)
+        })?;
         Ok(scripts)
     }
 

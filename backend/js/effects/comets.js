@@ -1,6 +1,8 @@
 export const meta = {
   name: "Comets",
   description: "Bright heads with fading tails racing along the string.",
+  category: "Particles & physics",
+  antialias: true,
   colors: [
     { id: "head", label: "Head", default: "#ffffff" },
     { id: "tail", label: "Tail", default: "#ff2a6d" },

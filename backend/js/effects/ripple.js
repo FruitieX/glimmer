@@ -1,6 +1,7 @@
 export const meta = {
   name: "Ripple",
   description: "Rings of colour spreading out from the centre.",
+  category: "Plasma & flow",
   colors: [
     { id: "wave", label: "Wave", default: "#00f5d4" },
     { id: "between", label: "Between", default: "#120136" },

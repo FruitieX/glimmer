@@ -160,6 +160,9 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
     let Ok(scripts) = Scripts::new() else { return };
     let mut serial = 0u64;
     let mut keys: Vec<String> = vec![];
+    // The LED positions and colour slot defaults of the running preview.
+    let mut current_points: Option<Vec<[f32; 3]>> = None;
+    let mut current_slots: Vec<String> = vec![];
     let mut current: Option<(PreviewRequest, usize, Instant)> = None;
     let mut out = vec![];
     let mut a = vec![];
@@ -175,6 +178,37 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
                 Err(mpsc::TryRecvError::Disconnected) => return,
             }
         }
+        // Only settings changed: update the running instance so the
+        // animation carries on instead of restarting.
+        let latest = match (latest, &mut current) {
+            (Some((req, layout)), Some((cur, _, _)))
+                if req.source == cur.source
+                    && req.kind == cur.kind
+                    && req.fixture_id == cur.fixture_id
+                    && layout.as_ref().map(|l| &l.0) == current_points.as_ref() =>
+            {
+                let slots = &current_slots;
+                let colors: Vec<Rgb> = (0..req.colors.len().max(slots.len()))
+                    .map(|i| {
+                        req.colors
+                            .get(i)
+                            .and_then(|c| color::parse_hex(c))
+                            .or_else(|| slots.get(i).and_then(|c| color::parse_hex(c)))
+                            .unwrap_or([1.0, 1.0, 1.0])
+                    })
+                    .collect();
+                if let Err(e) = scripts.update("main", &req.params, &colors)
+                    && !send_text(json!({"type": "error", "error": e}))
+                {
+                    return;
+                }
+                cur.params = req.params;
+                cur.colors = req.colors;
+                cur.duration_ms = req.duration_ms;
+                None
+            }
+            (latest, _) => latest,
+        };
         if let Some((req, layout)) = latest {
             serial += 1;
             // Forget the previous version's modules.
@@ -183,6 +217,7 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
             }
             let key = format!("preview{serial}");
             keys.push(key.clone());
+            let layout_points = layout.as_ref().map(|l| l.0.clone());
             let (points, aspect) = layout.unwrap_or_else(grid);
             let n = points.len();
             let layout_id = format!("l{serial}");
@@ -230,6 +265,8 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
                     out = vec![0.0; n * 3];
                     a = vec![0.0; n * 3];
                     b = vec![0.0; n * 3];
+                    current_slots = meta.colors.iter().map(|c| c.default.clone()).collect();
+                    current_points = layout_points;
                     current = Some((req, n, Instant::now()));
                 }
                 Err(e) => {

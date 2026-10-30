@@ -819,17 +819,23 @@ impl Worker {
             duration: if old.power { ramp_s } else { 0.0 },
         };
 
-        let draft_changed = draft.is_some();
-        let script_version = (self.lookup)(&state.look.script_id).map(|s| s.version);
-        let needs_layer = draft_changed
-            || match &self.fixtures[idx].layer {
+        // A draft whose code is already showing only updates its settings.
+        let needs_layer = if let Some(d) = &draft {
+            self.fixtures[idx]
+                .layer
+                .as_ref()
+                .is_none_or(|l| l.script != d.id || l.version != d.version)
+        } else {
+            let script_version = (self.lookup)(&state.look.script_id).map(|s| s.version);
+            match &self.fixtures[idx].layer {
                 None => true,
                 Some(l) => {
                     l.look.script_id != state.look.script_id
                         || l.script != state.look.script_id
                         || Some(l.version) != script_version
                 }
-            };
+            }
+        };
 
         let mut new_layer = None;
         if needs_layer {

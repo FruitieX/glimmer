@@ -30,6 +30,8 @@ export interface Meta {
   description: string;
   params: Record<string, Param>;
   colors: ColorSlot[];
+  category?: string;
+  antialias?: boolean;
   loops: boolean;
 }
 

@@ -1,6 +1,7 @@
 export const meta = {
   name: "Gradient",
   description: "A slowly drifting gradient through the chosen colours.",
+  category: "Gradients & patterns",
   colors: [
     { id: "a", label: "First", default: "#ff4d6d" },
     { id: "b", label: "Second", default: "#ffb703" },

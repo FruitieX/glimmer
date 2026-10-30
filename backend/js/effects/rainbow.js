@@ -1,6 +1,7 @@
 export const meta = {
   name: "Rainbow",
   description: "Classic scrolling rainbow.",
+  category: "Basics",
   params: {
     axis: { type: "select", label: "Direction", options: ["x", "y", "u"], labels: ["Horizontal", "Vertical", "Along the string"], default: "u" },
     speed: { type: "number", label: "Speed", min: 0, max: 2, step: 0.01, default: 0.2 },

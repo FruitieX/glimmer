@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { DeviceStatus } from "./api";
 
 /** Latest colours per fixture, updated without re-rendering React. */
@@ -143,12 +143,27 @@ export function usePreview(request: unknown | null) {
   }, [frame]);
 
   const body = request ? JSON.stringify(request) : null;
+  const sentSource = useRef<string | null>(null);
   useEffect(() => {
-    if (ws && body) {
-      const t = setTimeout(() => ws.send(body), 250);
-      return () => clearTimeout(t);
+    if (!ws || !body) return;
+    const source = (request as { source?: string }).source ?? null;
+    const send = () => {
+      sentSource.current = source;
+      ws.send(body);
+    };
+    // Settings changes go out right away (the server updates the running
+    // effect); code edits wait for a pause in typing.
+    if (source === sentSource.current) {
+      const f = requestAnimationFrame(send);
+      return () => cancelAnimationFrame(f);
     }
+    const t = setTimeout(send, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ws, body]);
+  useEffect(() => {
+    sentSource.current = null;
+  }, [ws]);
 
   return { error, meta, points, frame };
 }

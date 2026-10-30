@@ -29,6 +29,8 @@ const server = spawn(bin, [], {
   },
   stdio: ["ignore", "inherit", "inherit"],
 });
+// Never leave the server behind (it would keep this script's output open).
+process.on("exit", () => server.kill());
 
 async function until(what, f, ms = 15000) {
   const start = Date.now();
@@ -136,6 +138,24 @@ try {
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "Start from code" }).click();
   await page.getByText("version 1").waitFor();
+
+  // A picture becomes an effect that samples it.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  const uploaded = await page.request.post(`${origin}/api/images?name=Dots`, {
+    headers: { Origin: origin, "Content-Type": "image/png" },
+    data: png,
+  });
+  assert.ok(
+    uploaded.ok(),
+    `image upload: ${uploaded.status()} ${await uploaded.text()}`,
+  );
+  const imageEffect = await uploaded.json();
+  assert.equal(imageEffect.meta.category, "Images");
+  await page.goto(`${origin}/effects/${imageEffect.id}`);
+  await page.getByText("Try settings").waitFor();
 
   // Movies: a looping effect is uploaded and played from the string.
   const state = await (await page.request.get(`${origin}/api/state`)).json();

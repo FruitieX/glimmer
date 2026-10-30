@@ -1,6 +1,7 @@
 export const meta = {
   name: "Candlelight",
   description: "Warm, gently flickering light, each LED on its own flame.",
+  category: "Basics",
   colors: [{ id: "flame", label: "Flame", default: "#ff9329" }],
   params: {
     flicker: { type: "number", label: "Flicker", min: 0, max: 1, step: 0.01, default: 0.35 },

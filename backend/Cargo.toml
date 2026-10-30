@@ -9,6 +9,7 @@ publish = false
 axum = { version = "0.8.9", features = ["ws", "macros"] }
 base64 = "0.23.1"
 futures-util = "0.3.34"
+image = { version = "0.25.10", default-features = false, features = ["gif", "png", "jpeg"] }
 rand = "0.10.3"
 rquickjs = "0.14.0"
 rumqttc = { version = "0.25.1", default-features = false }

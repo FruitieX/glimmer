@@ -49,6 +49,7 @@ pub fn open(path: &Path) -> Result<Connection> {
          CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY, sub TEXT NOT NULL, expires INTEGER NOT NULL);",
     )
     .map_err(err)?;
+    crate::images::migrate(&db)?;
     Ok(db)
 }
 
