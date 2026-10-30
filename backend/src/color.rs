@@ -156,7 +156,8 @@ pub fn from_json(v: &Value) -> Option<Rgb> {
 /// The homectl representation published for a colour.
 pub fn to_json(c: Rgb) -> Value {
     let (h, s) = rgb_to_hs(c);
-    serde_json::json!({ "h": h.round() as u32 % 360, "s": (s * 1000.0).round() / 1000.0 })
+    let s = (f64::from(s) * 1000.0).round() / 1000.0;
+    serde_json::json!({ "h": h.round() as u32 % 360, "s": s })
 }
 
 /// How a device turns perceptual colours into bytes.
