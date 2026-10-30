@@ -295,14 +295,25 @@ struct GalleryRequest {
 
 /// Live thumbnails of every effect (or transition) with default settings.
 /// Binary messages: one byte of id length, the script id, then RGB bytes.
-pub async fn gallery(State(s): State<Server>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+pub async fn gallery(
+    State(s): State<Server>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     if let Err(e) = s.user(&headers) {
         return e.into_response();
     }
     ws.on_upgrade(move |socket| gallery_socket(s, socket))
 }
 
-type GalleryJob = (ScriptKind, Vec<crate::model::ScriptSource>, (Vec<[f32; 3]>, f32));
+/// What the gallery thread is rendering: kind, (script id, key) pairs, LED count, start.
+type GalleryRun = (ScriptKind, Vec<(String, String)>, usize, Instant);
+
+type GalleryJob = (
+    ScriptKind,
+    Vec<crate::model::ScriptSource>,
+    (Vec<[f32; 3]>, f32),
+);
 
 async fn gallery_socket(s: Server, socket: WebSocket) {
     let (mut tx, mut rx) = socket.split();
@@ -334,11 +345,10 @@ async fn gallery_socket(s: Server, socket: WebSocket) {
                             .unwrap_or_else(grid);
                         Some((req.kind, sources, layout))
                     })();
-                    if let Some(job) = job {
-                        if job_tx.send(job).is_err() {
+                    if let Some(job) = job
+                        && job_tx.send(job).is_err() {
                             break;
                         }
-                    }
                 }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 _ => {}
@@ -352,7 +362,7 @@ async fn gallery_socket(s: Server, socket: WebSocket) {
 }
 
 fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<Vec<u8>>) {
-    let mut job: Option<(ScriptKind, Vec<(String, String)>, usize, Instant)> = None;
+    let mut job: Option<GalleryRun> = None;
     let mut scripts = None;
     loop {
         let mut latest = None;
@@ -370,7 +380,10 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<
             let mut ready = vec![];
             if rt.layout("l", &points, aspect).is_ok() {
                 let defaults = |m: &crate::script::Meta| -> Vec<Rgb> {
-                    m.colors.iter().filter_map(|c| color::parse_hex(&c.default)).collect()
+                    m.colors
+                        .iter()
+                        .filter_map(|c| color::parse_hex(&c.default))
+                        .collect()
                 };
                 if kind == ScriptKind::Transition {
                     for (inst, id) in [("from", "rainbow"), ("to", "twinkle")] {
@@ -382,10 +395,12 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<
                 }
                 for source in sources {
                     let key = source.key();
-                    if let Ok(m) = rt.register(&key, &source.source) {
-                        if rt.create(&key, &key, "l", &json!({}), &defaults(&m)).is_ok() {
-                            ready.push((source.id.clone(), key));
-                        }
+                    if let Ok(m) = rt.register(&key, &source.source)
+                        && rt
+                            .create(&key, &key, "l", &json!({}), &defaults(&m))
+                            .is_ok()
+                    {
+                        ready.push((source.id.clone(), key));
                     }
                 }
             }
@@ -405,7 +420,15 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<
             for (id, key) in items {
                 let ok = if *kind == ScriptKind::Transition {
                     let phase = t % 3.0;
-                    rt.blend(key, Some(&a), Some(&b), (phase / 2.0).min(1.0), phase, 0.1, &mut out)
+                    rt.blend(
+                        key,
+                        Some(&a),
+                        Some(&b),
+                        (phase / 2.0).min(1.0),
+                        phase,
+                        0.1,
+                        &mut out,
+                    )
                 } else {
                     rt.render(key, t, 0.1, &mut out)
                 };
@@ -416,7 +439,10 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<
                 let mut msg = Vec::with_capacity(1 + idb.len() + n * 3);
                 msg.push(idb.len().min(255) as u8);
                 msg.extend_from_slice(&idb[..idb.len().min(255)]);
-                msg.extend(out.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8));
+                msg.extend(
+                    out.iter()
+                        .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8),
+                );
                 if tx.blocking_send(msg).is_err() {
                     return;
                 }
