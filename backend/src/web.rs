@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use tower_http::services::{ServeDir, ServeFile};
 
-pub const SESSION_COOKIE: &str = "twinkly_session";
+pub const SESSION_COOKIE: &str = "glimmer_session";
 /// Sessions last a year and renew themselves while in use.
 const SESSION_SECONDS: i64 = 365 * 86400;
 

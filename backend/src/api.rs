@@ -735,7 +735,7 @@ async fn generate(
         .app
         .ai
         .clone()
-        .ok_or_else(|| ApiError::bad("AI writing is not set up (no ANTHROPIC_API_KEY)."))?;
+        .ok_or_else(|| ApiError::bad("AI writing is not set up (no GLIMMER_AI_URL)."))?;
     if body.prompt.trim().is_empty() {
         return Err(ApiError::bad("Describe what you'd like to see."));
     }

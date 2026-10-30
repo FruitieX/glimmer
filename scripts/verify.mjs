@@ -1,5 +1,5 @@
 // End-to-end check: the real server and UI against a fake Twinkly string.
-// Needs `npm run build` and a built backend (TWINKLY_BIN, default backend/target/debug/twinkly).
+// Needs `npm run build` and a built backend (GLIMMER_BIN, default backend/target/debug/glimmer).
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
@@ -11,8 +11,8 @@ import { startFakeTwinkly } from "./fake-twinkly.mjs";
 
 const port = 3190;
 const origin = `http://127.0.0.1:${port}`;
-const bin = process.env.TWINKLY_BIN ?? "backend/target/debug/twinkly";
-const data = mkdtempSync(join(tmpdir(), "twinkly-verify-"));
+const bin = process.env.GLIMMER_BIN ?? "backend/target/debug/glimmer";
+const data = mkdtempSync(join(tmpdir(), "glimmer-verify-"));
 const shots = "test-results";
 mkdirSync(shots, { recursive: true });
 
@@ -20,12 +20,12 @@ const fake = startFakeTwinkly({ port: 8099, leds: 210, rgbw: true });
 const server = spawn(bin, [], {
   env: {
     ...process.env,
-    TWINKLY_DATA_DIR: data,
-    TWINKLY_DEV_LOGIN: "1",
-    TWINKLY_ORIGIN: origin,
-    TWINKLY_BIND: `127.0.0.1:${port}`,
-    TWINKLY_STATIC_DIR: "dist",
-    RUST_LOG: "twinkly=warn",
+    GLIMMER_DATA_DIR: data,
+    GLIMMER_DEV_LOGIN: "1",
+    GLIMMER_ORIGIN: origin,
+    GLIMMER_BIND: `127.0.0.1:${port}`,
+    GLIMMER_STATIC_DIR: "dist",
+    RUST_LOG: "glimmer=warn",
   },
   stdio: ["ignore", "inherit", "inherit"],
 });

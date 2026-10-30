@@ -52,7 +52,7 @@ pub struct StatePatch {
     pub transition: Option<TransitionSpec>,
 }
 
-/// Initial devices, read once from `TWINKLY_SEED` when the database is empty.
+/// Initial devices, read once from `GLIMMER_SEED` when the database is empty.
 #[derive(Deserialize)]
 struct SeedDevice {
     name: String,
@@ -141,7 +141,7 @@ impl App {
             return Ok(());
         }
         let seed: Vec<SeedDevice> =
-            serde_json::from_str(json).map_err(|e| format!("TWINKLY_SEED: {e}"))?;
+            serde_json::from_str(json).map_err(|e| format!("GLIMMER_SEED: {e}"))?;
         let mut sort = 0;
         for d in seed {
             let device = new_device(&d.name, &d.ip, d.enabled);

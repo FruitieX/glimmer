@@ -75,7 +75,7 @@ export function EffectsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Effects</h1>
           <p className="mt-1 text-sm text-muted">
             Small JavaScript programs that colour the LEDs. Edit them live, or
-            describe one and let Claude write it.
+            describe one and let the AI write it.
           </p>
         </div>
         <Button variant="primary" onClick={() => setCreating(true)}>
@@ -136,7 +136,7 @@ export function EffectsPage() {
           </div>
           {!state.ai && (
             <p className="text-xs text-muted">
-              AI writing needs an Anthropic API key on the server.
+              AI writing needs an AI endpoint configured on the server.
             </p>
           )}
         </div>

@@ -1,5 +1,5 @@
 {
-  description = "Twinkly: live animations for Twinkly LED strings";
+  description = "Glimmer: live animations for Twinkly LED strings";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   outputs = {
     self,
@@ -10,7 +10,7 @@
     build = system: let
       pkgs = import nixpkgs {inherit system;};
       frontend = pkgs.buildNpmPackage {
-        pname = "twinkly-ui";
+        pname = "glimmer-ui";
         version = "0.1.0";
         nodejs = pkgs.nodejs_26;
         src = pkgs.lib.cleanSourceWith {
@@ -19,10 +19,10 @@
         };
         npmDeps = pkgs.importNpmLock {npmRoot = ./.;};
         npmConfigHook = pkgs.importNpmLock.npmConfigHook;
-        installPhase = ''mkdir -p $out/share/twinkly; cp -r dist/. $out/share/twinkly/'';
+        installPhase = ''mkdir -p $out/share/glimmer; cp -r dist/. $out/share/glimmer/'';
       };
       backend = pkgs.rustPlatform.buildRustPackage {
-        pname = "twinkly";
+        pname = "glimmer";
         version = "0.1.0";
         # The backend embeds docs/effects.md (the scripting guide) as the AI's system prompt.
         src = pkgs.lib.fileset.toSource {
@@ -46,18 +46,18 @@
       inherit frontend backend;
       default = backend;
       container = pkgs.dockerTools.buildLayeredImage {
-        name = "ghcr.io/fruitiex/twinkly";
+        name = "ghcr.io/fruitiex/glimmer";
         tag = "main";
         contents = [backend frontend pkgs.cacert pkgs.tzdata pkgs.coreutils];
         extraCommands = ''mkdir -p data tmp; chmod 1777 tmp'';
         fakeRootCommands = ''chown 10001:10001 data'';
         config = {
           User = "10001:10001";
-          Entrypoint = ["${backend}/bin/twinkly"];
+          Entrypoint = ["${backend}/bin/glimmer"];
           Env = [
-            "TWINKLY_BIND=0.0.0.0:8080"
-            "TWINKLY_DATA_DIR=/data"
-            "TWINKLY_STATIC_DIR=${frontend}/share/twinkly"
+            "GLIMMER_BIND=0.0.0.0:8080"
+            "GLIMMER_DATA_DIR=/data"
+            "GLIMMER_STATIC_DIR=${frontend}/share/glimmer"
             "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
           ];
           ExposedPorts."8080/tcp" = {};

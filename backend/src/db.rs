@@ -25,9 +25,9 @@ pub fn now() -> i64 {
 
 pub fn open(path: &Path) -> Result<Connection> {
     let db = Connection::open(path).map_err(err)?;
-    let mode = std::env::var("TWINKLY_SQLITE_JOURNAL_MODE").unwrap_or("WAL".into());
+    let mode = std::env::var("GLIMMER_SQLITE_JOURNAL_MODE").unwrap_or("WAL".into());
     if !["WAL", "DELETE"].contains(&mode.as_str()) {
-        return Err("TWINKLY_SQLITE_JOURNAL_MODE must be WAL or DELETE".into());
+        return Err("GLIMMER_SQLITE_JOURNAL_MODE must be WAL or DELETE".into());
     }
     db.pragma_update(None, "journal_mode", &mode).map_err(err)?;
     db.pragma_update(None, "synchronous", "FULL").map_err(err)?;

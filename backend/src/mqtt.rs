@@ -25,13 +25,13 @@ impl Config {
     pub fn from_env() -> Option<Self> {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
         Some(Self {
-            host: var("TWINKLY_MQTT_HOST")?,
-            port: var("TWINKLY_MQTT_PORT")
+            host: var("GLIMMER_MQTT_HOST")?,
+            port: var("GLIMMER_MQTT_PORT")
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(1883),
-            username: var("TWINKLY_MQTT_USERNAME"),
-            password: var("TWINKLY_MQTT_PASSWORD"),
-            prefix: var("TWINKLY_MQTT_PREFIX")
+            username: var("GLIMMER_MQTT_USERNAME"),
+            password: var("GLIMMER_MQTT_PASSWORD"),
+            prefix: var("GLIMMER_MQTT_PREFIX")
                 .unwrap_or("home/lights/twinkly".into())
                 .trim_end_matches('/')
                 .to_string(),
@@ -165,7 +165,7 @@ pub fn spawn(app: Arc<App>, config: Config) {
     let suffix: String = (0..6)
         .map(|_| (b'a' + rand::random_range(0..26u8)) as char)
         .collect();
-    let mut options = MqttOptions::new(format!("twinkly-{suffix}"), &config.host, config.port);
+    let mut options = MqttOptions::new(format!("glimmer-{suffix}"), &config.host, config.port);
     options.set_keep_alive(Duration::from_secs(15));
     if let (Some(u), Some(p)) = (&config.username, &config.password) {
         options.set_credentials(u, p);

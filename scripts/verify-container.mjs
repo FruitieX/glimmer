@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
-const image = process.env.TWINKLY_TEST_IMAGE ?? "ghcr.io/fruitiex/twinkly:main";
-const name = `twinkly-check-${randomUUID().slice(0, 8)}`;
+const image = process.env.GLIMMER_TEST_IMAGE ?? "ghcr.io/fruitiex/glimmer:main";
+const name = `glimmer-check-${randomUUID().slice(0, 8)}`;
 const docker = (...args) =>
   execFileSync("docker", args, {
     encoding: "utf8",
@@ -28,9 +28,9 @@ try {
     "-p",
     "127.0.0.1::8080",
     "-e",
-    "TWINKLY_ORIGIN=http://localhost:8080",
+    "GLIMMER_ORIGIN=http://localhost:8080",
     "-e",
-    "TWINKLY_SQLITE_JOURNAL_MODE=DELETE",
+    "GLIMMER_SQLITE_JOURNAL_MODE=DELETE",
     image,
   );
   const port = JSON.parse(docker("inspect", name))[0].NetworkSettings.Ports[
@@ -51,7 +51,7 @@ try {
   for (const path of ["/", "/icon.svg", "/effects/plasma"])
     assert.equal((await fetch(origin + path)).status, 200, path);
   assert.equal((await fetch(`${origin}/api/state`)).status, 401);
-  docker("exec", name, "twinkly", "--backup", "/data/backup.sqlite3");
+  docker("exec", name, "glimmer", "--backup", "/data/backup.sqlite3");
   console.log(
     "Container checks passed: UID 10001, read-only root, static assets, auth required, backup.",
   );

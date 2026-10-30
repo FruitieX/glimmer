@@ -587,7 +587,7 @@ function AiDialog({
       title={
         mode === "change" ? "Change with AI" : `Write a new ${kind} with AI`
       }
-      description="Claude writes the code; it appears in the editor and the preview right away. Nothing is saved until you press Save."
+      description="The AI writes the code; it appears in the editor and the preview right away. Nothing is saved until you press Save."
       wide
     >
       <div className="space-y-4">

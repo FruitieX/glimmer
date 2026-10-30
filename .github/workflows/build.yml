@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     concurrency:
-      group: twinkly-build-${{ github.ref }}
+      group: glimmer-build-${{ github.ref }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
@@ -51,11 +51,11 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker tag ghcr.io/fruitiex/twinkly:main ghcr.io/fruitiex/twinkly:${{ github.sha }}
-          docker push ghcr.io/fruitiex/twinkly:main
-          docker push ghcr.io/fruitiex/twinkly:${{ github.sha }}
-          reference="$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/fruitiex/twinkly:${{ github.sha }})"
-          [[ "$reference" == ghcr.io/fruitiex/twinkly@sha256:* ]]
+          docker tag ghcr.io/fruitiex/glimmer:main ghcr.io/fruitiex/glimmer:${{ github.sha }}
+          docker push ghcr.io/fruitiex/glimmer:main
+          docker push ghcr.io/fruitiex/glimmer:${{ github.sha }}
+          reference="$(docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/fruitiex/glimmer:${{ github.sha }})"
+          [[ "$reference" == ghcr.io/fruitiex/glimmer@sha256:* ]]
           printf 'digest=%s\n' "${reference##*@}" >> "$GITHUB_OUTPUT"
 
   deploy:
@@ -88,7 +88,7 @@ jobs:
           event-type: image-update
           client-payload: |
             {
-              "image": "ghcr.io/fruitiex/twinkly",
+              "image": "ghcr.io/fruitiex/glimmer",
               "digest": "${{ needs.build.outputs.digest }}",
               "revision": "${{ github.sha }}"
             }

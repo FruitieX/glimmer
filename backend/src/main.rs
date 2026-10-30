@@ -20,7 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// `twinkly probe <ip> [seconds] [fps]`: streams a test pattern and reports timing.
+/// `glimmer probe <ip> [seconds] [fps]`: streams a test pattern and reports timing.
 fn probe(ip: &str, seconds: f64, fps: f64) -> Result<(), String> {
     let client = device::Client::new(ip);
     let gestalt = client.gestalt()?;
@@ -95,23 +95,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "twinkly=info".into()),
+                .unwrap_or_else(|_| "glimmer=info".into()),
         )
         .init();
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("probe") {
         let ip = args
             .get(2)
-            .ok_or("usage: twinkly probe <ip> [seconds] [fps]")?;
+            .ok_or("usage: glimmer probe <ip> [seconds] [fps]")?;
         let seconds = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10.0);
         let fps = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(25.0);
         probe(ip, seconds, fps)?;
         return Ok(());
     }
 
-    let data = PathBuf::from(env("TWINKLY_DATA_DIR").unwrap_or("data".into()));
+    let data = PathBuf::from(env("GLIMMER_DATA_DIR").unwrap_or("data".into()));
     std::fs::create_dir_all(&data)?;
-    let path = data.join("twinkly.sqlite3");
+    let path = data.join("glimmer.sqlite3");
     let conn = db::open(&path)?;
     #[cfg(unix)]
     {
@@ -134,35 +134,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     db::sync_builtins(&conn)?;
 
-    let origin = env("TWINKLY_ORIGIN").unwrap_or("http://localhost:3110".into());
+    let origin = env("GLIMMER_ORIGIN").unwrap_or("http://localhost:3110".into());
     let origin = origin.trim_end_matches('/').to_string();
     if !(origin.starts_with("http://") || origin.starts_with("https://")) {
-        return Err("TWINKLY_ORIGIN must be an HTTP(S) origin".into());
+        return Err("GLIMMER_ORIGIN must be an HTTP(S) origin".into());
     }
-    let feedback_hub = env("TWINKLY_FEEDBACK_HUB").map(|h| h.trim_end_matches('/').to_string());
+    let feedback_hub = env("GLIMMER_FEEDBACK_HUB").map(|h| h.trim_end_matches('/').to_string());
     if let Some(hub) = &feedback_hub
         && (!(hub.starts_with("http://") || hub.starts_with("https://"))
             || hub.contains([' ', ';', '\'', '"']))
     {
-        return Err("TWINKLY_FEEDBACK_HUB must be an HTTP(S) origin".into());
+        return Err("GLIMMER_FEEDBACK_HUB must be an HTTP(S) origin".into());
     }
     let oidc = oidc::OidcConfig::from_env(&origin)?.map(|config| {
         tracing::info!("sign-in through {}", config.issuer);
         Arc::new(oidc::Oidc::new(config))
     });
-    let dev_login = env("TWINKLY_DEV_LOGIN").as_deref() == Some("1");
+    let dev_login = env("GLIMMER_DEV_LOGIN").as_deref() == Some("1");
     if dev_login && oidc.is_some() {
-        return Err("TWINKLY_DEV_LOGIN can't be combined with OIDC sign-in".into());
+        return Err("GLIMMER_DEV_LOGIN can't be combined with OIDC sign-in".into());
     }
     if oidc.is_none() && !dev_login {
         tracing::warn!(
-            "no sign-in method configured; set TWINKLY_OIDC_* (or TWINKLY_DEV_LOGIN=1 locally)"
+            "no sign-in method configured; set GLIMMER_OIDC_* (or GLIMMER_DEV_LOGIN=1 locally)"
         );
     }
 
     let ai = ai::Ai::from_env();
     let app = app::App::new(conn, ai);
-    if let Some(seed) = env("TWINKLY_SEED") {
+    if let Some(seed) = env("GLIMMER_SEED") {
         let json = if seed.starts_with('[') {
             seed
         } else {
@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(config) = mqtt::Config::from_env() {
         mqtt::spawn(app.clone(), config);
     } else {
-        tracing::info!("MQTT is off (set TWINKLY_MQTT_HOST)");
+        tracing::info!("MQTT is off (set GLIMMER_MQTT_HOST)");
     }
 
     let server = web::server(
@@ -184,10 +184,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         dev_login,
         feedback_hub.as_deref(),
     );
-    let bind = env("TWINKLY_BIND").unwrap_or("127.0.0.1:3111".into());
+    let bind = env("GLIMMER_BIND").unwrap_or("127.0.0.1:3111".into());
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!("listening on {bind}");
-    let static_dir = PathBuf::from(env("TWINKLY_STATIC_DIR").unwrap_or("dist".into()));
+    let static_dir = PathBuf::from(env("GLIMMER_STATIC_DIR").unwrap_or("dist".into()));
     axum::serve(listener, web::router(server, static_dir))
         .with_graceful_shutdown(async {
             let mut term =

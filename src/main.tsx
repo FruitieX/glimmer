@@ -120,7 +120,7 @@ function Shell({ children, user }: { children: ReactNode; user: string }) {
               height={30}
               className="rounded-lg"
             />
-            <span className="text-[17px]">Twinkly</span>
+            <span className="text-[17px]">Glimmer</span>
           </Link>
           <nav className="hidden items-center gap-1 md:flex">
             {nav.map((n) => (
@@ -193,7 +193,7 @@ function SignIn({ auth }: { auth: AuthStatus }) {
           height={72}
           className="mx-auto rounded-2xl shadow-[0_0_60px_-10px_rgb(255_181_71/0.6)]"
         />
-        <h1 className="mt-6 text-2xl font-semibold tracking-tight">Twinkly</h1>
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">Glimmer</h1>
         <p className="mt-2 text-sm text-muted">
           Animations for the house's LED strings.
         </p>

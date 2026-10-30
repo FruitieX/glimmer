@@ -11,7 +11,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub const STATE_COOKIE: &str = "twinkly_oidc";
+pub const STATE_COOKIE: &str = "glimmer_oidc";
 pub const STATE_SECONDS: u64 = 600;
 
 #[derive(Clone, Debug)]
@@ -26,7 +26,7 @@ pub struct OidcConfig {
 }
 
 impl OidcConfig {
-    /// Reads `TWINKLY_OIDC_*`. Returns `Ok(None)` when sign-in through a provider is not configured.
+    /// Reads `GLIMMER_OIDC_*`. Returns `Ok(None)` when sign-in through a provider is not configured.
     pub fn from_env(origin: &str) -> Result<Option<Self>, String> {
         let var = |name: &str| {
             std::env::var(name)
@@ -35,14 +35,14 @@ impl OidcConfig {
                 .filter(|v| !v.is_empty())
         };
         let (issuer, client_id, client_secret) = match (
-            var("TWINKLY_OIDC_ISSUER"),
-            var("TWINKLY_OIDC_CLIENT_ID"),
-            var("TWINKLY_OIDC_CLIENT_SECRET"),
+            var("GLIMMER_OIDC_ISSUER"),
+            var("GLIMMER_OIDC_CLIENT_ID"),
+            var("GLIMMER_OIDC_CLIENT_SECRET"),
         ) {
             (None, None, None) => return Ok(None),
             (Some(i), Some(c), Some(s)) => (i, c, s),
             _ => {
-                return Err("Set TWINKLY_OIDC_ISSUER, TWINKLY_OIDC_CLIENT_ID and TWINKLY_OIDC_CLIENT_SECRET together".into());
+                return Err("Set GLIMMER_OIDC_ISSUER, GLIMMER_OIDC_CLIENT_ID and GLIMMER_OIDC_CLIENT_SECRET together".into());
             }
         };
         Ok(Some(Self {
@@ -50,7 +50,7 @@ impl OidcConfig {
             client_id,
             client_secret,
             redirect_url: format!("{origin}/auth/callback"),
-            allowed_groups: list(&var("TWINKLY_OIDC_ALLOWED_GROUPS").unwrap_or_default()),
+            allowed_groups: list(&var("GLIMMER_OIDC_ALLOWED_GROUPS").unwrap_or_default()),
         }))
     }
 }
@@ -341,9 +341,9 @@ mod tests {
     pub fn config(groups: &[&str]) -> OidcConfig {
         OidcConfig {
             issuer: "https://id.example.org".into(),
-            client_id: "twinkly".into(),
+            client_id: "glimmer".into(),
             client_secret: "s".into(),
-            redirect_url: "https://twinkly.example.org/auth/callback".into(),
+            redirect_url: "https://glimmer.example.org/auth/callback".into(),
             allowed_groups: groups.iter().map(|g| g.to_string()).collect(),
         }
     }
@@ -365,7 +365,7 @@ mod tests {
 
     fn claims() -> serde_json::Value {
         serde_json::json!({
-            "iss": "https://id.example.org", "sub": "u1", "aud": "twinkly",
+            "iss": "https://id.example.org", "sub": "u1", "aud": "glimmer",
             "exp": now() + 60, "nonce": "n1", "preferred_username": "sam", "groups": ["family"],
         })
     }
@@ -430,7 +430,7 @@ mod tests {
         });
         let (url, state) = oidc.start().unwrap();
         assert!(url.starts_with("https://id.example.org/authorize?response_type=code&"));
-        assert!(url.contains("redirect_uri=https%3A%2F%2Ftwinkly.example.org%2Fauth%2Fcallback"));
+        assert!(url.contains("redirect_uri=https%3A%2F%2Fglimmer.example.org%2Fauth%2Fcallback"));
         assert!(url.contains(&format!("state={state}")));
         assert!(url.contains("code_challenge_method=S256"));
         assert!(oidc.take_login(&state, None).is_err());

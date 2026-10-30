@@ -477,6 +477,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "glimmer"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
+ "futures-util",
+ "http-body-util",
+ "rand 0.10.3",
+ "rquickjs",
+ "rumqttc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1636,31 +1661,6 @@ dependencies = [
  "rand 0.9.5",
  "sha1",
  "thiserror",
-]
-
-[[package]]
-name = "twinkly"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.23.1",
- "futures-util",
- "http-body-util",
- "rand 0.10.3",
- "rquickjs",
- "rumqttc",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "ureq",
- "uuid",
 ]
 
 [[package]]
