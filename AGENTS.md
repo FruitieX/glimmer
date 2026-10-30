@@ -9,3 +9,10 @@ Checks before committing: `cargo fmt --check`, `cargo clippy --all-targets -- -D
 Testing against real strings changes what the household sees. Don't stream to strings without the owner's go-ahead; when you do, put each string back in the mode it was in (`led/mode`, and `movies/current` for movies). The firmware can only erase all stored movies at once, so test uploads stay on the device.
 
 The repository is public: use example.com and 192.0.2.x in docs and fixtures, and keep real IPs in the deployment's secret seed, not in Git.
+
+Firmware facts verified on Gen II firmware 2.11 (they differ from the xled docs in places):
+
+- The current movie is set with `POST /xled/v1/movies/current`, not `led/movies/current` (which returns 404).
+- `movies/full` makes the uploaded movie the current one.
+- Realtime mode didn't time out within 45 s of the last UDP frame.
+- `gestalt`'s `frame_rate`/`measured_frame_rate` (about 13 fps on the curtains) describe the string's own effects, not the realtime limit. Streams at 30–40 fps are accepted without errors, but nobody has yet checked by eye whether every frame is shown.

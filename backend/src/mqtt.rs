@@ -202,6 +202,11 @@ pub fn spawn(app: Arc<App>, config: Config) {
                     app.changed();
                 }
                 Ok(MqttEvent::Incoming(Packet::Publish(msg))) => {
+                    // A retained command is an old one replayed on subscribe; the
+                    // database already holds the current state.
+                    if msg.retain {
+                        continue;
+                    }
                     let Some(id) = msg
                         .topic
                         .strip_prefix(&format!("{prefix}/"))
