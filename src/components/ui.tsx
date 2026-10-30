@@ -117,42 +117,7 @@ export function Toggle({
   );
 }
 
-export function Slider({
-  value,
-  min = 0,
-  max = 1,
-  step = 0.01,
-  onChange,
-  onCommit,
-  label,
-}: {
-  value: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  onChange: (v: number) => void;
-  onCommit?: (v: number) => void;
-  label: string;
-}) {
-  const fill = max > min ? ((value - min) / (max - min)) * 100 : 0;
-  return (
-    <input
-      type="range"
-      className="slider"
-      aria-label={label}
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      style={{ "--fill": `${fill}%` } as React.CSSProperties}
-      onChange={(e) => onChange(Number(e.target.value))}
-      onPointerUp={(e) =>
-        onCommit?.(Number((e.target as HTMLInputElement).value))
-      }
-      onKeyUp={(e) => onCommit?.(Number((e.target as HTMLInputElement).value))}
-    />
-  );
-}
+export { Slider } from "./Slider";
 
 export function Field({
   label,

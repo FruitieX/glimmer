@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Plus, Sparkles, Wand2 } from "lucide-react";
 import { post, type ScriptInfo, type ScriptKind } from "../api";
-import { Link, useApp, useRoute } from "../main";
+import { useApp, useRoute } from "../main";
+import { GRID, useGallery } from "../live";
+import { EffectCard } from "../components/EffectCard";
 import {
   Badge,
   Button,
-  Card,
   Dialog,
   Field,
   Select,
@@ -13,31 +14,32 @@ import {
 } from "../components/ui";
 import { TEMPLATES } from "./templates";
 
-function ScriptCard({ s }: { s: ScriptInfo }) {
-  const params = Object.keys(s.meta.params).length;
+function Gallery({
+  kind,
+  scripts,
+}: {
+  kind: ScriptKind;
+  scripts: ScriptInfo[];
+}) {
+  const { state } = useApp();
+  const { navigate } = useRoute();
+  // Preview on the first mapped light, so thumbnails look like the real thing.
+  const light = state.fixtures.find((f) => f.layout?.points.length);
+  const frames = useGallery(kind, light?.fixture.id);
+  const layout = light?.layout ?? { points: GRID, aspect: 1 };
   return (
-    <Link to={`/effects/${encodeURIComponent(s.id)}`} className="block">
-      <Card className="h-full p-4 transition hover:ring-glow/40">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-medium">{s.name}</h3>
-          {s.builtin ? (
-            <Badge>Built in</Badge>
-          ) : (
-            <Badge tone="glow">v{s.version}</Badge>
-          )}
-        </div>
-        <p className="mt-1.5 line-clamp-2 text-sm text-muted">
-          {s.meta.description || "No description"}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
-          {s.meta.colors.length > 0 && (
-            <span>{s.meta.colors.length} colours</span>
-          )}
-          {params > 0 && <span>· {params} settings</span>}
-          {s.meta.loops && <span>· loops</span>}
-        </div>
-      </Card>
-    </Link>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {scripts.map((s) => (
+        <EffectCard
+          key={s.id}
+          script={s}
+          frames={frames}
+          layout={layout}
+          badge={!s.builtin && <Badge tone="glow">v{s.version}</Badge>}
+          onClick={() => navigate(`/effects/${encodeURIComponent(s.id)}`)}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -87,21 +89,13 @@ export function EffectsPage() {
         <h2 className="text-[13px] font-semibold tracking-wide text-muted uppercase">
           Effects
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {effects.map((s) => (
-            <ScriptCard key={s.id} s={s} />
-          ))}
-        </div>
+        <Gallery kind="effect" scripts={effects} />
       </section>
       <section className="space-y-3">
         <h2 className="text-[13px] font-semibold tracking-wide text-muted uppercase">
           Transitions
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {transitions.map((s) => (
-            <ScriptCard key={s.id} s={s} />
-          ))}
-        </div>
+        <Gallery kind="transition" scripts={transitions} />
       </section>
 
       <Dialog

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Crosshair,
-  Plus,
   RefreshCw,
   Scissors,
   Trash2,
@@ -13,7 +12,6 @@ import { Link, useApp } from "../main";
 import {
   Badge,
   Button,
-  Card,
   Dialog,
   Field,
   Input,
@@ -24,39 +22,36 @@ import {
 } from "../components/ui";
 import { outputLabel, statusTone } from "./Lights";
 
-export function StringsPage() {
+/** Settings for one string, opened from its lights. */
+export function DeviceSettingsDialog({
+  deviceId,
+  onClose,
+}: {
+  deviceId: string;
+  onClose: () => void;
+}) {
   const { state } = useApp();
   const status = useStatus();
-  const [adding, setAdding] = useState(false);
+  const device = state.devices.find((d) => d.id === deviceId);
+  if (!device) return null;
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Strings</h1>
-          <p className="mt-1 text-sm text-muted">
-            The Twinkly devices on the network, and how their LEDs are split
-            into lights.
-          </p>
-        </div>
-        <Button variant="primary" onClick={() => setAdding(true)}>
-          <Plus size={16} /> Add a string
-        </Button>
-      </div>
-      <div className="space-y-6">
-        {state.devices.map((d) => (
-          <DeviceCard
-            key={d.id}
-            device={d}
-            status={status[d.id] ?? state.status[d.id]}
-          />
-        ))}
-      </div>
-      <AddDevice open={adding} onOpenChange={setAdding} />
-    </div>
+    <Dialog
+      open
+      onOpenChange={(v) => !v && onClose()}
+      title={`${device.name} settings`}
+      description="The Twinkly string behind this light: connection, output and how its LEDs are split into lights."
+      wide
+    >
+      <DeviceCard
+        device={device}
+        status={status[device.id] ?? state.status[device.id]}
+        onRemoved={onClose}
+      />
+    </Dialog>
   );
 }
 
-function AddDevice({
+export function AddDevice({
   open,
   onOpenChange,
 }: {
@@ -132,9 +127,11 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 function DeviceCard({
   device,
   status,
+  onRemoved,
 }: {
   device: Device;
   status?: DeviceStatus;
+  onRemoved: () => void;
 }) {
   const { state, reload } = useApp();
   const { run, busy } = useAction();
@@ -156,10 +153,9 @@ function DeviceCard({
     setDraft({ ...draft, output: { ...draft.output, ...o } });
 
   return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-4">
+    <div>
+      <div className="flex flex-wrap items-center gap-3 border-b border-line pb-4">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold">{device.name}</h2>
           <p className="text-sm text-muted">
             {device.ip}
             {info?.product_code && ` · ${info.product_code}`}
@@ -190,7 +186,7 @@ function DeviceCard({
         />
       </div>
 
-      <div className="space-y-6 p-5">
+      <div className="space-y-6 pt-5">
         {!device.enabled && (
           <p className="text-sm text-muted">
             Disabled strings are left alone: the app never contacts them. Enable
@@ -438,8 +434,10 @@ function DeviceCard({
                 !confirm(`Remove ${device.name} and its lights from the app?`)
               )
                 return;
-              if (await run(() => del(`/devices/${device.id}`), "Removed"))
-                reload();
+              if (await run(() => del(`/devices/${device.id}`), "Removed")) {
+                await reload();
+                onRemoved();
+              }
             }}
           >
             <Trash2 size={14} /> Remove
@@ -452,7 +450,7 @@ function DeviceCard({
       {splitting && (
         <Split device={device} onClose={() => setSplitting(false)} />
       )}
-    </Card>
+    </div>
   );
 }
 

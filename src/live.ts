@@ -152,3 +152,44 @@ export function usePreview(request: unknown | null) {
 
   return { error, meta, points, frame };
 }
+
+/** Live thumbnails of every effect or transition, keyed by script id. */
+export function useGallery(kind: "effect" | "transition", fixtureId?: string) {
+  const [frames] = useState(() => new Map<string, Uint8Array>());
+  useEffect(() => {
+    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/gallery`;
+    let closed = false;
+    let socket: WebSocket;
+    let timer: ReturnType<typeof setTimeout>;
+    const open = () => {
+      socket = new WebSocket(url);
+      socket.binaryType = "arraybuffer";
+      socket.onopen = () => socket.send(JSON.stringify({ kind, fixtureId }));
+      socket.onmessage = (e) => {
+        if (!(e.data instanceof ArrayBuffer)) return;
+        const bytes = new Uint8Array(e.data);
+        const len = bytes[0];
+        frames.set(
+          new TextDecoder().decode(bytes.subarray(1, 1 + len)),
+          bytes.subarray(1 + len),
+        );
+      };
+      socket.onclose = () => {
+        if (!closed) timer = setTimeout(open, 3000);
+      };
+    };
+    open();
+    return () => {
+      closed = true;
+      clearTimeout(timer);
+      socket?.close();
+    };
+  }, [kind, fixtureId, frames]);
+  return frames;
+}
+
+/** The 10 × 21 grid the server previews on when no light is chosen. */
+export const GRID: [number, number, number][] = Array.from(
+  { length: 210 },
+  (_, i) => [Math.floor(i / 21) / 9, 1 - (i % 21) / 20, 0.5],
+);

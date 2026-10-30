@@ -10,20 +10,13 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  Code2,
-  Lightbulb,
-  LogOut,
-  Router as RouterIcon,
-  WifiOff,
-} from "lucide-react";
+import { Code2, Lightbulb, LogOut, WifiOff } from "lucide-react";
 import { api, post, type AppState, type AuthStatus } from "./api";
 import { startLive, useConnected, useOnChange } from "./live";
 import { Button, cx, ToastProvider } from "./components/ui";
 import { LightsPage } from "./pages/Lights";
 import { LightPage } from "./pages/Light";
 import { EffectsPage } from "./pages/Effects";
-import { StringsPage } from "./pages/Strings";
 import "./styles.css";
 
 const EditorPage = lazy(() =>
@@ -98,12 +91,6 @@ function Shell({ children, user }: { children: ReactNode; user: string }) {
       icon: Code2,
       active: path.startsWith("/effects"),
     },
-    {
-      to: "/strings",
-      label: "Strings",
-      icon: RouterIcon,
-      active: path.startsWith("/strings"),
-    },
   ];
   return (
     <div className="min-h-dvh pb-24 md:pb-10">
@@ -161,7 +148,7 @@ function Shell({ children, user }: { children: ReactNode; user: string }) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 pt-6">{children}</main>
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line/60 bg-ink/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 border-t border-line/60 bg-ink/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
         {nav.map((n) => (
           <Link
             key={n.to}
@@ -245,7 +232,6 @@ function Pages() {
       </Suspense>
     );
   if (parts[0] === "effects") return <EffectsPage />;
-  if (parts[0] === "strings") return <StringsPage />;
   return <LightsPage />;
 }
 

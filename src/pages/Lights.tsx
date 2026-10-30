@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Settings2 } from "lucide-react";
 import { post, type AppState } from "../api";
 import { frames, useStatus } from "../live";
 import { Link, useApp } from "../main";
 import { Mirror } from "../components/Mirror";
+import { AddDevice, DeviceSettingsDialog } from "./DeviceSettings";
 import {
   Badge,
   Button,
@@ -87,8 +88,9 @@ function LightCard({
   const preset = state.presets.find((p) => p.id === item.state.presetId);
   const source = useCallback(() => frames.get(fixture.id), [fixture.id]);
   const disabled = !device?.enabled;
+  const [settings, setSettings] = useState(false);
   return (
-    <Card className="group overflow-hidden transition hover:ring-glow/40">
+    <Card className="group relative overflow-hidden transition hover:ring-glow/40">
       <Link to={`/lights/${encodeURIComponent(fixture.id)}`} className="block">
         <div className="relative bg-gradient-to-b from-night to-ink">
           {layout && layout.points.length ? (
@@ -103,7 +105,7 @@ function LightCard({
               Not read from the string yet
             </div>
           )}
-          <div className="absolute top-3 left-3">
+          <div className="pointer-events-none absolute top-3 left-3">
             <Badge
               tone={
                 disabled ? "muted" : statusTone(status?.output, status?.online)
@@ -116,6 +118,19 @@ function LightCard({
           </div>
         </div>
       </Link>
+      <button
+        onClick={() => setSettings(true)}
+        aria-label={`${device?.name ?? fixture.name} settings`}
+        className="absolute top-2.5 right-2.5 rounded-xl bg-ink/60 p-2 text-muted backdrop-blur transition hover:text-white"
+      >
+        <Settings2 size={16} />
+      </button>
+      {settings && (
+        <DeviceSettingsDialog
+          deviceId={fixture.deviceId}
+          onClose={() => setSettings(false)}
+        />
+      )}
       <div className="space-y-3 p-4">
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -157,6 +172,8 @@ function LightCard({
 
 export function LightsPage() {
   const { state } = useApp();
+  const [adding, setAdding] = useState(false);
+  const add = <AddDevice open={adding} onOpenChange={setAdding} />;
   if (!state.fixtures.length) {
     return (
       <div className="mx-auto max-w-md py-20 text-center">
@@ -164,24 +181,32 @@ export function LightsPage() {
         <p className="mt-2 text-sm text-muted">
           Add a Twinkly string by its IP address to get started.
         </p>
-        <Link to="/strings" className="mt-6 inline-block">
-          <Button variant="primary">
-            <Plus size={16} /> Add a string
-          </Button>
-        </Link>
+        <Button
+          variant="primary"
+          className="mt-6"
+          onClick={() => setAdding(true)}
+        >
+          <Plus size={16} /> Add a string
+        </Button>
+        {add}
       </div>
     );
   }
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Lights</h1>
           <p className="mt-1 text-sm text-muted">
-            What every string is showing right now.
+            What every string is showing right now. The gear on a light opens
+            its string's settings.
           </p>
         </div>
+        <Button onClick={() => setAdding(true)}>
+          <Plus size={16} /> Add a string
+        </Button>
       </div>
+      {add}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {state.fixtures.map((item) => (
           <LightCard key={item.fixture.id} item={item} state={state} />

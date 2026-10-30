@@ -4,6 +4,7 @@ import {
   Bookmark,
   Check,
   Pencil,
+  Settings2,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -19,7 +20,9 @@ import {
   type Preset,
   type TransitionSpec,
 } from "../api";
-import { frames, useStatus } from "../live";
+import { frames, useGallery, useStatus } from "../live";
+import { EffectCard } from "../components/EffectCard";
+import { DeviceSettingsDialog } from "./DeviceSettings";
 import { Link, useApp, useRoute } from "../main";
 import { Mirror } from "../components/Mirror";
 import { ColorControls, ParamControls } from "../components/controls";
@@ -77,6 +80,8 @@ function Light({
   const script = state.scripts.find((s) => s.id === item.state.look.scriptId);
   const meta = script?.meta;
   const { run } = useAction();
+  const gallery = useGallery("effect", fixture.id);
+  const [settings, setSettings] = useState(false);
 
   // Local copies so sliders feel instant; the server echo replaces them.
   const [power, setPower] = useState(item.state.power);
@@ -145,6 +150,20 @@ function Light({
             status.fps > 0 &&
             ` · ${status.fps.toFixed(0)} fps`}
         </Badge>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`${device?.name ?? fixture.name} settings`}
+          onClick={() => setSettings(true)}
+        >
+          <Settings2 size={16} />
+        </Button>
+        {settings && (
+          <DeviceSettingsDialog
+            deviceId={fixture.deviceId}
+            onClose={() => setSettings(false)}
+          />
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -228,36 +247,37 @@ function Light({
       />
 
       <Section title="Effect">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {effects.map((e) => {
-            const active = e.id === item.state.look.scriptId;
-            return (
-              <button
-                key={e.id}
-                onClick={() =>
-                  !active && run(() => send({ scriptId: e.id, power: true }))
-                }
-                className={cx(
-                  "rounded-2xl p-4 text-left ring-1 transition",
-                  active
-                    ? "bg-glow/10 ring-glow/60"
-                    : "bg-panel/80 ring-line hover:ring-glow/30",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{e.name}</span>
-                  {active ? (
-                    <Check size={16} className="text-glow" />
-                  ) : (
-                    !e.builtin && <Sparkles size={14} className="text-glow-2" />
-                  )}
-                </div>
-                <p className="mt-1 line-clamp-2 text-xs text-muted">
-                  {e.meta.description || "No description"}
-                </p>
-              </button>
-            );
-          })}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {layout?.points.length
+            ? effects.map((e) => {
+                const active = e.id === item.state.look.scriptId;
+                return (
+                  <EffectCard
+                    key={e.id}
+                    script={e}
+                    frames={gallery}
+                    layout={layout}
+                    active={active}
+                    badge={
+                      active ? (
+                        <Check size={16} className="shrink-0 text-glow" />
+                      ) : (
+                        !e.builtin && (
+                          <Sparkles
+                            size={14}
+                            className="shrink-0 text-glow-2"
+                          />
+                        )
+                      )
+                    }
+                    onClick={() =>
+                      !active &&
+                      run(() => send({ scriptId: e.id, power: true }))
+                    }
+                  />
+                );
+              })
+            : null}
         </div>
       </Section>
 

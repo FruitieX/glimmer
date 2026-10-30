@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  Bookmark,
+  Code2,
   Copy,
+  Pencil,
   History,
   Lightbulb,
   LightbulbOff,
@@ -19,6 +22,7 @@ import {
   post,
   put,
   type Meta,
+  type Preset,
   type ScriptInfo,
   type ScriptKind,
   type VersionInfo,
@@ -126,6 +130,8 @@ function Editor({
   const [trying, setTrying] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(startWithAi);
   const [saving, setSaving] = useState(false);
+  // Phones show the preview and settings first; the code opens on request.
+  const [showCode, setShowCode] = useState(false);
   const [note, setNote] = useState("");
 
   const request = useMemo(
@@ -219,17 +225,17 @@ function Editor({
         >
           <ArrowLeft size={18} />
         </Link>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-48">
           <h1 className="truncate text-2xl font-semibold tracking-tight">
             {meta?.name || loaded?.info.name || "New script"}
           </h1>
-          <p className="text-sm text-muted">
+          <p className="truncate text-sm text-muted">
             {kind === "effect" ? "Effect" : "Transition"}
             {loaded && ` · version ${loaded.info.version}`}
-            {builtin && " · built in (save a copy to change it)"}
+            {builtin && " · built in"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex w-full gap-2 sm:w-auto [&>button]:flex-1 sm:[&>button]:flex-none">
           <Button
             variant="subtle"
             onClick={() => setAiOpen(true)}
@@ -249,7 +255,12 @@ function Editor({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <Card className="flex min-h-[520px] flex-col overflow-hidden">
+        <Card
+          className={cx(
+            "order-2 min-h-[520px] flex-col overflow-hidden xl:order-1 xl:flex",
+            showCode ? "flex" : "hidden",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-line px-4 py-2 text-xs text-muted">
             <span className="font-mono">
               {loaded?.info.id ?? "untitled"}.js
@@ -270,7 +281,7 @@ function Editor({
           )}
         </Card>
 
-        <div className="space-y-6">
+        <div className="order-1 space-y-6 xl:order-2">
           <Card className="overflow-hidden">
             <div className="bg-gradient-to-b from-night to-ink">
               {points ? (
@@ -287,6 +298,11 @@ function Editor({
                 </div>
               )}
             </div>
+            {preview.error && !showCode && (
+              <div className="border-t border-bad/30 bg-bad/5 px-4 py-3 font-mono text-xs whitespace-pre-wrap text-bad xl:hidden">
+                {preview.error}
+              </div>
+            )}
             <div className="space-y-4 border-t border-line p-4">
               <Field label="Preview on">
                 <Select
@@ -374,6 +390,32 @@ function Editor({
             </Section>
           )}
 
+          {loaded && kind === "effect" && meta && (
+            <EffectPresets
+              scriptId={loaded.info.id}
+              meta={meta}
+              params={previewParams}
+              colors={previewColors}
+              onLoad={(p, c) => {
+                setPreviewParams(p);
+                setPreviewColors(c);
+              }}
+            />
+          )}
+
+          <Button
+            variant="subtle"
+            className="w-full xl:hidden"
+            onClick={() => setShowCode((v) => !v)}
+          >
+            <Code2 size={16} />{" "}
+            {showCode
+              ? "Hide the code"
+              : builtin
+                ? "View the code"
+                : "Edit the code"}
+          </Button>
+
           {loaded && !builtin && (
             <Versions
               loaded={loaded}
@@ -446,6 +488,167 @@ function Editor({
         </form>
       </Dialog>
     </div>
+  );
+}
+
+/** Saved presets of this effect: load one into the try settings, or save the current ones. */
+function EffectPresets({
+  scriptId,
+  meta,
+  params,
+  colors,
+  onLoad,
+}: {
+  scriptId: string;
+  meta: Meta;
+  params: Record<string, unknown>;
+  colors: string[];
+  onLoad: (params: Record<string, unknown>, colors: string[]) => void;
+}) {
+  const { state, reload } = useApp();
+  const { run, busy } = useAction();
+  const presets = state.presets.filter((p) => p.look.scriptId === scriptId);
+  const [naming, setNaming] = useState<Preset | "new" | null>(null);
+  const [name, setName] = useState("");
+  const look = {
+    scriptId,
+    params: paramValues(meta, params),
+    colors: colorValues(meta, colors),
+  };
+  return (
+    <Section
+      title="Presets"
+      action={
+        <Button
+          size="sm"
+          onClick={() => {
+            setName("");
+            setNaming("new");
+          }}
+        >
+          <Bookmark size={14} /> Save these settings
+        </Button>
+      }
+    >
+      <Card className="divide-y divide-line">
+        {presets.length === 0 && (
+          <p className="px-4 py-3 text-sm text-muted">
+            No presets use this effect yet. Presets appear on every light, and
+            homectl scenes can pick them by name.
+          </p>
+        )}
+        {presets.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 px-4 py-2.5">
+            <button
+              className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
+              onClick={() => onLoad(p.look.params ?? {}, p.look.colors ?? [])}
+              title="Load into the try settings"
+            >
+              <span className="flex shrink-0 -space-x-1.5">
+                {(p.look.colors ?? []).slice(0, 4).map((c, i) => (
+                  <span
+                    key={i}
+                    className="h-4 w-4 rounded-full ring-2 ring-panel"
+                    style={{ background: c }}
+                  />
+                ))}
+              </span>
+              <span className="truncate">{p.name}</span>
+            </button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              title="Replace with the current try settings"
+              onClick={async () => {
+                if (
+                  await run(
+                    () => put(`/presets/${p.id}`, { name: p.name, look }),
+                    `Updated ${p.name}`,
+                  )
+                )
+                  reload();
+              }}
+            >
+              <Save size={14} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`Rename ${p.name}`}
+              onClick={() => {
+                setName(p.name);
+                setNaming(p);
+              }}
+            >
+              <Pencil size={14} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label={`Delete ${p.name}`}
+              disabled={busy}
+              onClick={async () => {
+                if (!confirm(`Delete the preset ${p.name}?`)) return;
+                if (await run(() => del(`/presets/${p.id}`), "Deleted"))
+                  reload();
+              }}
+            >
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        ))}
+      </Card>
+      <Dialog
+        open={naming !== null}
+        onOpenChange={(v) => !v && setNaming(null)}
+        title={naming === "new" ? "Save as a preset" : "Rename preset"}
+        description={
+          naming === "new"
+            ? "Saves the current try settings and colours."
+            : undefined
+        }
+      >
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const ok =
+              naming === "new"
+                ? await run(
+                    () => post("/presets", { name, look }),
+                    "Preset saved",
+                  )
+                : naming &&
+                  (await run(
+                    () =>
+                      put(`/presets/${naming.id}`, { name, look: naming.look }),
+                    "Renamed",
+                  ));
+            if (ok) {
+              setNaming(null);
+              reload();
+            }
+          }}
+        >
+          <Field label="Name">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Cosy evening"
+              autoFocus
+            />
+          </Field>
+          <Button
+            variant="primary"
+            className="w-full"
+            disabled={busy || !name.trim()}
+          >
+            Save
+          </Button>
+        </form>
+      </Dialog>
+    </Section>
   );
 }
 

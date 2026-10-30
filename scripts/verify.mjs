@@ -85,16 +85,19 @@ try {
   await page.getByText("No lights yet").waitFor();
 
   // Add the fake string.
-  await page.getByRole("link", { name: "Add a string" }).click();
   await page.getByRole("button", { name: "Add a string" }).click();
   await page.getByLabel("Name").fill("Test curtain");
   await page.getByLabel("IP address").fill("127.0.0.1:8099");
   await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("switch", { name: "Test curtain power" }).waitFor();
+
+  // The gear opens the string's settings.
+  await page.getByRole("button", { name: "Test curtain settings" }).click();
   await page.getByText("210 RGBW LEDs").waitFor();
-  await page.screenshot({ path: `${shots}/strings.png`, fullPage: true });
+  await page.screenshot({ path: `${shots}/settings.png` });
+  await page.keyboard.press("Escape");
 
   // Turn it on from the overview.
-  await page.getByRole("link", { name: "Lights" }).first().click();
   await page.getByRole("switch", { name: "Test curtain power" }).click();
   await until("realtime frames", () => fake.state.frames > 20);
   assert.equal(fake.state.mode, "rt");
@@ -130,7 +133,7 @@ try {
 
   // Create an effect from the template and save it.
   await page.goto(`${origin}/effects`);
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByRole("button", { name: "Start from code" }).click();
   await page.getByText("version 1").waitFor();
 
@@ -158,6 +161,13 @@ try {
   await page.goto(`${origin}/lights/Test%20curtain`);
   await page.getByText("Rainbow settings").waitFor();
   await page.screenshot({ path: `${shots}/light-phone.png`, fullPage: true });
+  await page.goto(`${origin}/effects/snowfall`);
+  await page.getByText("Try settings").waitFor();
+  await page.getByRole("button", { name: "View the code" }).waitFor();
+  await page.screenshot({ path: `${shots}/editor-phone.png`, fullPage: true });
+  await page.goto(`${origin}/effects`);
+  await delay(1500);
+  await page.screenshot({ path: `${shots}/effects-phone.png`, fullPage: true });
 
   assert.deepEqual(errors, [], "no browser errors");
   console.log(

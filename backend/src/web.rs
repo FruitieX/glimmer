@@ -380,6 +380,7 @@ pub fn router(server: Server, static_dir: PathBuf) -> Router {
         .route("/auth/dev", get(dev_login))
         .route("/api/live", get(ws::live))
         .route("/api/preview", get(ws::preview))
+        .route("/api/gallery", get(ws::gallery))
         .merge(api::routes())
         .fallback_service(ServeDir::new(&static_dir).fallback(ServeFile::new(index)))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))

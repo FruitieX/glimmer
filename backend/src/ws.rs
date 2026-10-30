@@ -284,3 +284,147 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
         }
     }
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GalleryRequest {
+    kind: ScriptKind,
+    /// Whose LED positions to use; a 10 × 21 grid otherwise.
+    fixture_id: Option<String>,
+}
+
+/// Live thumbnails of every effect (or transition) with default settings.
+/// Binary messages: one byte of id length, the script id, then RGB bytes.
+pub async fn gallery(State(s): State<Server>, headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+    if let Err(e) = s.user(&headers) {
+        return e.into_response();
+    }
+    ws.on_upgrade(move |socket| gallery_socket(s, socket))
+}
+
+type GalleryJob = (ScriptKind, Vec<crate::model::ScriptSource>, (Vec<[f32; 3]>, f32));
+
+async fn gallery_socket(s: Server, socket: WebSocket) {
+    let (mut tx, mut rx) = socket.split();
+    let (job_tx, job_rx) = mpsc::channel::<GalleryJob>();
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    std::thread::spawn(move || gallery_thread(job_rx, out_tx));
+    loop {
+        tokio::select! {
+            incoming = rx.next() => match incoming {
+                Some(Ok(Message::Text(text))) => {
+                    let Ok(req) = serde_json::from_str::<GalleryRequest>(&text) else { continue };
+                    let job = (|| -> Option<GalleryJob> {
+                        let db = s.app.db().ok()?;
+                        let sources = db::scripts(&db)
+                            .ok()?
+                            .into_iter()
+                            .filter(|i| i.kind == req.kind)
+                            .filter_map(|i| db::script_source(&db, &i.id, None).ok().flatten())
+                            .collect();
+                        let layout = req
+                            .fixture_id
+                            .as_ref()
+                            .and_then(|id| {
+                                let (f, _) = db::fixture(&db, id).ok()??;
+                                let d = db::device(&db, &f.device_id).ok()??;
+                                let l = layout::fixture_layout(&d, &f);
+                                Some((l.points, l.aspect))
+                            })
+                            .unwrap_or_else(grid);
+                        Some((req.kind, sources, layout))
+                    })();
+                    if let Some(job) = job {
+                        if job_tx.send(job).is_err() {
+                            break;
+                        }
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                _ => {}
+            },
+            out = out_rx.recv() => match out {
+                Some(frame) => { if tx.send(Message::Binary(frame.into())).await.is_err() { break; } }
+                None => break,
+            },
+        }
+    }
+}
+
+fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<Vec<u8>>) {
+    let mut job: Option<(ScriptKind, Vec<(String, String)>, usize, Instant)> = None;
+    let mut scripts = None;
+    loop {
+        let mut latest = None;
+        loop {
+            match rx.try_recv() {
+                Ok(j) => latest = Some(j),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => return,
+            }
+        }
+        if let Some((kind, sources, (points, aspect))) = latest {
+            // A fresh runtime per request keeps old modules from piling up.
+            let Ok(rt) = Scripts::new() else { return };
+            let n = points.len();
+            let mut ready = vec![];
+            if rt.layout("l", &points, aspect).is_ok() {
+                let defaults = |m: &crate::script::Meta| -> Vec<Rgb> {
+                    m.colors.iter().filter_map(|c| color::parse_hex(&c.default)).collect()
+                };
+                if kind == ScriptKind::Transition {
+                    for (inst, id) in [("from", "rainbow"), ("to", "twinkle")] {
+                        let src = crate::builtin::source(id).unwrap_or_default();
+                        if let Ok(m) = rt.register(id, src) {
+                            let _ = rt.create(inst, id, "l", &json!({}), &defaults(&m));
+                        }
+                    }
+                }
+                for source in sources {
+                    let key = source.key();
+                    if let Ok(m) = rt.register(&key, &source.source) {
+                        if rt.create(&key, &key, "l", &json!({}), &defaults(&m)).is_ok() {
+                            ready.push((source.id.clone(), key));
+                        }
+                    }
+                }
+            }
+            scripts = Some(rt);
+            job = Some((kind, ready, n, Instant::now()));
+        }
+        let started = Instant::now();
+        if let (Some((kind, items, n, t0)), Some(rt)) = (&job, &scripts) {
+            let t = t0.elapsed().as_secs_f64();
+            let mut out = vec![0.0; n * 3];
+            let mut a = vec![0.0; n * 3];
+            let mut b = vec![0.0; n * 3];
+            if *kind == ScriptKind::Transition {
+                let _ = rt.render("from", t, 0.1, &mut a);
+                let _ = rt.render("to", t, 0.1, &mut b);
+            }
+            for (id, key) in items {
+                let ok = if *kind == ScriptKind::Transition {
+                    let phase = t % 3.0;
+                    rt.blend(key, Some(&a), Some(&b), (phase / 2.0).min(1.0), phase, 0.1, &mut out)
+                } else {
+                    rt.render(key, t, 0.1, &mut out)
+                };
+                if ok.is_err() {
+                    continue;
+                }
+                let idb = id.as_bytes();
+                let mut msg = Vec::with_capacity(1 + idb.len() + n * 3);
+                msg.push(idb.len().min(255) as u8);
+                msg.extend_from_slice(&idb[..idb.len().min(255)]);
+                msg.extend(out.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8));
+                if tx.blocking_send(msg).is_err() {
+                    return;
+                }
+            }
+        }
+        let period = Duration::from_millis(if job.is_some() { 80 } else { 200 });
+        if let Some(rest) = period.checked_sub(started.elapsed()) {
+            std::thread::sleep(rest);
+        }
+    }
+}
