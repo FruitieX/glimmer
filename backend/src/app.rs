@@ -324,6 +324,11 @@ impl App {
                 }
                 state.preset_id = None;
             }
+            // Custom colours make the look no longer the preset's, unless the
+            // same change also picked the preset (a homectl scene sends both).
+            if (patch.colors.is_some() || patch.color.is_some()) && patch.preset.is_none() {
+                state.preset_id = None;
+            }
             if let Some(colors) = &patch.colors {
                 state.look.colors = colors
                     .iter()
