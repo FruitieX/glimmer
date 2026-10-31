@@ -12,6 +12,12 @@ export const meta = {
     glints: { type: "number", label: "Glints", min: 0, max: 1, step: 0.01, default: 0.5 },
     ripples: { type: "number", label: "Ripple size", min: 0.3, max: 3, step: 0.01, default: 1 },
   },
+  looks: [
+    { name: "Lagoon", params: { glints: 0.7 }, colors: ["#006a8a", "#00e0c0", "#ffffff"] },
+    { name: "Sunset", params: { speed: 0.5 }, colors: ["#3a0a6a", "#ff5a3a", "#ffd080"] },
+    { name: "Moonlit", params: { speed: 0.4, glints: 0.3 }, colors: ["#020a3a", "#1a40a0", "#e0eaff"] },
+    { name: "Alpine", params: { speed: 1.2, ripples: 1.8 }, colors: ["#003a8a", "#2a8aff", "#ffffff"] },
+  ],
 };
 
 const PERIOD = 40;

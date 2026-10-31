@@ -12,6 +12,12 @@ export const meta = {
     sparkle: { type: "number", label: "Sparkles", min: 0, max: 1, step: 0.01, default: 0.3 },
     level: { type: "number", label: "Brightness", min: 0.2, max: 1, step: 0.01, default: 0.8 },
   },
+  looks: [
+    { name: "Candlelight", params: { speed: 0.3, twinkle: 0.7, level: 0.6 }, colors: ["#ff8a20", "#ffd090"] },
+    { name: "Cool white", params: { sparkle: 0.5 }, colors: ["#d0e4ff", "#ffffff"] },
+    { name: "Golden", params: { speed: 1, sparkle: 0.8 }, colors: ["#ff9a20", "#ffffff"] },
+    { name: "Steady", params: { twinkle: 0.15, sparkle: 0.1, level: 1 }, colors: ["#ffb460", "#fff0d8"] },
+  ],
 };
 
 const PERIOD = 60;

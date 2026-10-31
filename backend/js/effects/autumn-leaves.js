@@ -14,6 +14,12 @@ export const meta = {
     wind: { type: "number", label: "Wind", min: -1, max: 1, step: 0.01, default: 0.35 },
     size: { type: "number", label: "Leaf size", min: 0.03, max: 0.2, step: 0.01, default: 0.07 },
   },
+  looks: [
+    { name: "Maple", params: { count: 14 }, colors: ["#ff1a0a", "#ff4a00", "#ff8a10", "#200802"] },
+    { name: "Golden birch", params: { count: 18 }, colors: ["#ff9000", "#ffb000", "#ffd030", "#1a0c02"] },
+    { name: "Windy", params: { count: 16, speed: 1.8, wind: 0.9 }, colors: ["#e8300a", "#ff7a1a", "#ffc030", "#200a02"] },
+    { name: "Twilight", params: { speed: 0.6, wind: 0.1, size: 0.1 }, colors: ["#c0102a", "#ff5020", "#ff9a20", "#0a0418"] },
+  ],
 };
 
 const PERIOD = 30;

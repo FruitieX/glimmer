@@ -14,6 +14,12 @@ export const meta = {
     size: { type: "number", label: "Chick size", min: 0.06, max: 0.2, step: 0.01, default: 0.11 },
     background: { type: "number", label: "Background", min: 0, max: 1, step: 0.01, default: 0.35 },
   },
+  looks: [
+    { name: "Bluebell", params: {}, colors: ["#ffd81a", "#ff6a00", "#80b0ff", "#c0a0ff"] },
+    { name: "Lilac", params: {}, colors: ["#ffe030", "#ff7010", "#d0a0ff", "#ffb0e0"] },
+    { name: "Busy coop", params: { count: 7, speed: 1.6, size: 0.08 }, colors: ["#fff050", "#ff8000", "#ffc0e0", "#c0f0ff"] },
+    { name: "Lazy Sunday", params: { count: 2, speed: 0.5, size: 0.15, background: 0.2 }, colors: ["#ffd000", "#ff5a00", "#b0f0d0", "#e0c0ff"] },
+  ],
 };
 
 const PERIOD = 30;

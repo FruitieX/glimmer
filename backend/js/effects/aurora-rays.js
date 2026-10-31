@@ -13,6 +13,12 @@ export const meta = {
     height: { type: "number", label: "Ray length", min: 0.1, max: 1, step: 0.01, default: 0.45 },
     shimmer: { type: "number", label: "Shimmer", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Emerald", params: { speed: 0.4, rays: 7, height: 0.6 }, colors: ["#20ff60", "#20d0a0", "#010a08"] },
+    { name: "Crimson", params: { shimmer: 0.8 }, colors: ["#ff3060", "#ff60c0", "#0a0210"] },
+    { name: "Polar blue", params: { speed: 0.3, rays: 4 }, colors: ["#40e0ff", "#4060ff", "#01040e"] },
+    { name: "Storm", params: { speed: 1.4, rays: 10, shimmer: 0.9 }, colors: ["#60ff40", "#20e0ff", "#020410"] },
+  ],
 };
 
 // Everything moves at whole multiples of one slow cycle.

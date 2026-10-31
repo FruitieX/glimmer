@@ -13,6 +13,12 @@ export const meta = {
     tilt: { type: "number", label: "Tilt", min: -1.5, max: 1.5, step: 0.05, default: 0.5 },
     pinstripe: { type: "boolean", label: "Pinstripes", default: false },
   },
+  looks: [
+    { name: "Peppermint", params: { stripes: 5, pinstripe: true }, colors: ["#ff0a1e", "#ffffff", "#20d050"] },
+    { name: "Frosty", params: { speed: 0.25, tilt: -0.5 }, colors: ["#2060ff", "#e8f4ff", "#a0e0ff"] },
+    { name: "Green mint", params: { stripes: 4, speed: 0.8, pinstripe: true }, colors: ["#10d040", "#fff8f0", "#ff1020"] },
+    { name: "Barber pole", params: { stripes: 2, speed: 1.2, tilt: 1 }, colors: ["#ff1020", "#fff0e6", "#2040ff"] },
+  ],
 };
 
 export function loop(params) {

@@ -14,6 +14,13 @@ export const meta = {
     bend: { type: "number", label: "Bend", min: 0, max: 1, step: 0.05, default: 0.35 },
     crest: { type: "number", label: "Crest shading", min: 0, max: 1, step: 0.05, default: 0.5 },
   },
+  looks: [
+    { name: "Ocean", params: { speed: 0.08 }, colors: ["#0040ff", "#00c0ff", "#00ffc0", "#2000a0"] },
+    { name: "Sunset", params: {}, colors: ["#ff2000", "#ff7a00", "#ffc040", "#c0105a"] },
+    { name: "Forest", params: { size: 0.8 }, colors: ["#00ff40", "#80ff00", "#00a080", "#00c060"] },
+    { name: "Neon surf", params: { speed: 0.35, size: 1.2, bend: 0.7 }, colors: ["#ff00c8", "#00ffea", "#ffee00", "#8000ff"] },
+    { name: "Pastel", params: { speed: 0.06, crest: 0.2 }, colors: ["#ffa0d0", "#a0d0ff", "#ffe0a0", "#c0ffd0"] },
+  ],
 };
 
 export function loop(params) {

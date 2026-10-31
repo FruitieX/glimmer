@@ -12,6 +12,13 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.02, max: 1, step: 0.01, default: 0.15 },
     tail: { type: "number", label: "Tail length", min: 0.02, max: 0.5, step: 0.01, default: 0.15 },
   },
+  looks: [
+    { name: "Ice", params: {}, colors: ["#ffffff", "#20a0ff", "#000208"] },
+    { name: "Fireball", params: { speed: 0.25, tail: 0.25 }, colors: ["#fff0a0", "#ff3000", "#000000"] },
+    { name: "Meteors", params: { count: 8, speed: 0.4, tail: 0.08 }, colors: ["#ffffff", "#ffb040", "#01020a"] },
+    { name: "Slow drift", params: { count: 1, speed: 0.05, tail: 0.4 }, colors: ["#e0ffe0", "#20ff80", "#000000"] },
+    { name: "Neon", params: { count: 5 }, colors: ["#ffe0ff", "#c000ff", "#000000"] },
+  ],
 };
 export function loop(params) {
   return 1 / params.speed;

@@ -32,6 +32,7 @@ import { Link, useApp, useRoute } from "../main";
 import { CodeEditor } from "../components/CodeEditor";
 import { Mirror } from "../components/Mirror";
 import { ColorControls, ParamControls } from "../components/controls";
+import { LookChips } from "../components/Looks";
 import {
   Badge,
   Button,
@@ -367,6 +368,15 @@ function Editor({
           {meta && (
             <Section title="Try settings">
               <Card className="space-y-5 p-5">
+                <LookChips
+                  meta={meta}
+                  params={previewParams}
+                  colors={previewColors}
+                  onPick={(look) => {
+                    setPreviewParams(look.params);
+                    setPreviewColors(look.colors);
+                  }}
+                />
                 {meta.colors?.length > 0 && (
                   <ColorControls
                     slots={meta.colors}

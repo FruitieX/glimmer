@@ -12,6 +12,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 2, step: 0.01, default: 0.6 },
     sky: { type: "number", label: "Sky brightness", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Blizzard", params: { flakes: 0.95, speed: 1.4 }, colors: ["#ffffff", "#0a1430", "#2a3a60"] },
+    { name: "Midnight", params: { flakes: 0.3, speed: 0.4, sky: 0.3 }, colors: ["#d8e4ff", "#020624", "#0a1a50"] },
+    { name: "Twilight", params: { flakes: 0.6 }, colors: ["#fff0f8", "#1a0a40", "#5a2a70"] },
+    { name: "Arctic", params: { speed: 0.5, sky: 0.6 }, colors: ["#e8fcff", "#020a1a", "#0a4a5a"] },
+  ],
 };
 
 const PERIOD = 60;

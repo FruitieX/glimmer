@@ -11,6 +11,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     height: { type: "number", label: "Flame height", min: 0.2, max: 1.5, step: 0.01, default: 0.8 },
   },
+  looks: [
+    { name: "Embers", params: { speed: 0.5, height: 0.45 }, colors: ["#ff8a2a", "#d02000", "#400004"] },
+    { name: "Blaze", params: { speed: 1.6, height: 1.2 }, colors: ["#fff0b0", "#ff7a00", "#b01000"] },
+    { name: "Witchfire", params: { speed: 0.8 }, colors: ["#d0ff60", "#20d040", "#063a20"] },
+    { name: "Gas flame", params: { speed: 1.3, height: 0.6 }, colors: ["#c8f0ff", "#2a70ff", "#140660"] },
+  ],
 };
 export function render(ctx) {
   const { n, x, y, out, colors, params, t } = ctx;

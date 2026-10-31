@@ -14,6 +14,12 @@ export const meta = {
     size: { type: "number", label: "Size", min: 0.25, max: 0.5, step: 0.01, default: 0.42 },
     twinkles: { type: "number", label: "Little stars", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Silver star", params: { turn: 0 }, colors: ["#c8dcff", "#ffffff", "#ffe0b0", "#030820"] },
+    { name: "Big bright", params: { size: 0.5, twinkles: 0.8 }, colors: ["#ffb000", "#ffffe0", "#e0e8ff", "#040a28"] },
+    { name: "Fast spin", params: { speed: 1.8, turn: 3, size: 0.34 }, colors: ["#ff9a20", "#fff0a0", "#ffd0f0", "#0a0420"] },
+    { name: "Red star", params: { twinkles: 0.3 }, colors: ["#ff1a20", "#ffd060", "#fff0d0", "#08020e"] },
+  ],
 };
 
 const PERIOD = 40;

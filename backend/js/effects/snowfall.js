@@ -12,6 +12,12 @@ export const meta = {
     size: { type: "number", label: "Flake size", min: 0.02, max: 0.3, step: 0.01, default: 0.09 },
     sky: { type: "number", label: "Sky brightness", min: 0, max: 1, step: 0.01, default: 0.3 },
   },
+  looks: [
+    { name: "Blizzard", params: { flakes: 36, speed: 0.5, size: 0.06 }, colors: ["#0b1d51", "#ffffff"] },
+    { name: "Calm night", params: { flakes: 6, speed: 0.1, size: 0.14 }, colors: ["#1a0f4a", "#fff4e0"] },
+    { name: "Arctic", params: {}, colors: ["#003a6a", "#c8f0ff"] },
+    { name: "Dusk", params: { sky: 0.4 }, colors: ["#4a1a6a", "#ffe0f0"] },
+  ],
 };
 export function loop(params) {
   return 1 / params.speed;

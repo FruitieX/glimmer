@@ -15,6 +15,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     sparkle: { type: "number", label: "Icing sparkle", min: 0, max: 1, step: 0.01, default: 0.4 },
   },
+  looks: [
+    { name: "Candlelit", params: { flicker: 0.8, speed: 0.7 }, colors: ["#a04010", "#fff0d8", "#ff9010", "#ff1e2a", "#20c050", "#030618"] },
+    { name: "Frosted", params: { sparkle: 0.9 }, colors: ["#b05a20", "#ffffff", "#ffe0a0", "#ff3a8a", "#40d0ff", "#020c28"] },
+    { name: "Candyland", params: { speed: 1.3 }, colors: ["#d06020", "#fff0f8", "#ffb040", "#ff40c0", "#a0ff20", "#0a0420"] },
+    { name: "Cosy", params: { flicker: 0.3, sparkle: 0.2 }, colors: ["#8a3a10", "#ffe8d0", "#ff8020", "#ff2010", "#10a040", "#06040e"] },
+  ],
 };
 
 const PERIOD = 40;

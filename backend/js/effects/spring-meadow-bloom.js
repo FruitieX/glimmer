@@ -15,6 +15,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     sky: { type: "number", label: "Sky brightness", min: 0, max: 1, step: 0.01, default: 0.35 },
   },
+  looks: [
+    { name: "Tulips", params: {}, colors: ["#ff2a2a", "#ffd000", "#ff7a00", "#ffffff", "#2ea83a", "#5aa8e8"] },
+    { name: "Bluebells", params: { flowers: 10 }, colors: ["#4a6aff", "#a07aff", "#ffffff", "#ffe060", "#1e9a40", "#4a90d8"] },
+    { name: "Twilight", params: { sky: 0.3 }, colors: ["#ff4fa0", "#ffb000", "#ffffff", "#ffd02a", "#2a8a30", "#7a3aff"] },
+    { name: "Moonlit", params: { speed: 0.5, sky: 0.5 }, colors: ["#ff6ec0", "#7af0ff", "#ffffff", "#ffe060", "#0e5a20", "#0a1a50"] },
+  ],
 };
 
 const PERIOD = 30;

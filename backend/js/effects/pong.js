@@ -14,6 +14,12 @@ export const meta = {
     paddle: { type: "number", label: "Paddle size", min: 1, max: 5, step: 0.5, default: 3 },
     glow: { type: "number", label: "Ball glow", min: 0.3, max: 2, step: 0.05, default: 1 },
   },
+  looks: [
+    { name: "Retro", params: { glow: 0.5 }, colors: ["#ffffff", "#ffffff", "#ffffff", "#000000"] },
+    { name: "Neon", params: { speed: 12 }, colors: ["#ff00d4", "#00ffcc", "#ffff40", "#06000e"] },
+    { name: "Fire & ice", params: { paddle: 2, skill: 0.6 }, colors: ["#2a7bff", "#ff3a00", "#ffffff", "#030308"] },
+    { name: "Rookies", params: { speed: 5, skill: 0.4, paddle: 4.5 }, colors: ["#5cff5c", "#ffd23a", "#ff5fa2", "#040604"] },
+  ],
 };
 
 // Logical field in grid units, mapped onto the LEDs by position. The game is

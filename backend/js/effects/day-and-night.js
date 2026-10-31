@@ -14,6 +14,12 @@ export const meta = {
     stars: { type: "number", label: "Stars", min: 0, max: 0.5, step: 0.01, default: 0.12 },
     glow: { type: "number", label: "Sunrise glow", min: 0, max: 1, step: 0.01, default: 0.7 },
   },
+  looks: [
+    { name: "Midsummer", params: { stars: 0.03, glow: 0.9 }, colors: ["#4aa0ff", "#ff9a40", "#100c30", "#fff8d0"] },
+    { name: "Winter", params: { sun: 0.07, stars: 0.3 }, colors: ["#6aa8e0", "#ff5a8a", "#020414", "#ffe0c0"] },
+    { name: "Tropical", params: { length: 60, sun: 0.13 }, colors: ["#00a0ff", "#ff4a10", "#02061a", "#ffe060"] },
+    { name: "Time lapse", params: { length: 20, stars: 0.25 }, colors: ["#2f70ff", "#ff3020", "#020418", "#ffffff"] },
+  ],
 };
 
 export function loop(params) {

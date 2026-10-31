@@ -14,6 +14,12 @@ export const meta = {
     layers: { type: "number", label: "Layer length", min: 2, max: 30, step: 0.5, unit: "s", default: 8 },
     hold: { type: "number", label: "Pause when full", min: 0, max: 10, step: 0.5, unit: "s", default: 2 },
   },
+  looks: [
+    { name: "Desert", params: { rate: 14 }, colors: ["#ffb040", "#ff7020", "#ffe0a0", "#0a0602"] },
+    { name: "Seaside", params: {}, colors: ["#ffd060", "#20c0ff", "#ffffff", "#000a14"] },
+    { name: "Neon", params: { rate: 20, wander: 0.9 }, colors: ["#ff00a0", "#00ffd0", "#ffe000", "#050010"] },
+    { name: "Hourglass", params: { rate: 4, wander: 0, layers: 15 }, colors: ["#ffc040", "#ff9020", "#ffe8a0", "#04030a"] },
+  ],
 };
 
 const MAXG = 48;

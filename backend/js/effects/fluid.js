@@ -14,6 +14,12 @@ export const meta = {
     swirl: { type: "number", label: "Swirliness", min: 0, max: 1, step: 0.01, default: 0.5 },
     fade: { type: "number", label: "Ink lifetime", min: 0.5, max: 8, step: 0.1, unit: "s", default: 2.5 },
   },
+  looks: [
+    { name: "Ocean", params: {}, colors: ["#00a0ff", "#00ffc0", "#2040ff", "#000814"] },
+    { name: "Lava", params: { stir: 0.6, fade: 5 }, colors: ["#ff2000", "#ff8000", "#ffd040", "#0a0100"] },
+    { name: "Neon", params: { stir: 2.2, swirl: 0.9 }, colors: ["#ff00ff", "#00ff60", "#ffff00", "#020008"] },
+    { name: "Calm ink", params: { jets: 1, stir: 0.5, swirl: 0.2, fade: 6 }, colors: ["#8040ff", "#ff40a0", "#40c0ff", "#020210"] },
+  ],
 };
 
 // A small "stable fluids" solver: semi-Lagrangian advection, a Jacobi pressure

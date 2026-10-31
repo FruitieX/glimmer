@@ -33,6 +33,7 @@ import { PlaylistCard } from "./Playlists";
 import { Link, useApp } from "../main";
 import { Mirror } from "../components/Mirror";
 import { ColorControls, ParamControls } from "../components/controls";
+import { LookChips } from "../components/Looks";
 import {
   Badge,
   Button,
@@ -416,7 +417,24 @@ function Light({
             )
           }
         >
-          <Card className="p-5">
+          <Card className="space-y-5 p-5">
+            <LookChips
+              meta={meta}
+              params={params}
+              colors={colors}
+              disabled={busy}
+              onPick={(look) => {
+                setParams(paramValues(meta, look.params));
+                setColors(colorValues(meta, look.colors));
+                run(() =>
+                  send({
+                    params: look.params,
+                    replaceParams: true,
+                    colors: look.colors,
+                  }),
+                );
+              }}
+            />
             <ParamControls
               params={meta.params}
               values={params}

@@ -13,6 +13,12 @@ export const meta = {
     clouds: { type: "number", label: "Cloud brightness", min: 0, max: 1, step: 0.01, default: 0.45 },
     drift: { type: "number", label: "Cloud speed", min: 0, max: 3, step: 1, default: 1 },
   },
+  looks: [
+    { name: "Tempest", params: { strikes: 24, flash: 1, drift: 2 }, colors: ["#f4f0ff", "#a070ff", "#3a1a68"] },
+    { name: "Distant", params: { strikes: 4, flash: 0.5, clouds: 0.6 }, colors: ["#d8d0ff", "#7050e0", "#4a2a90"] },
+    { name: "Toxic storm", params: { strikes: 12 }, colors: ["#e8ffd0", "#60ff40", "#1a6a3a"] },
+    { name: "Blood sky", params: { strikes: 7, drift: 0 }, colors: ["#ffe0d0", "#ff3040", "#701830"] },
+  ],
 };
 
 const PERIOD = 40;

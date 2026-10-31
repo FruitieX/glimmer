@@ -7,6 +7,12 @@ export const meta = {
     flicker: { type: "number", label: "Flicker", min: 0, max: 1, step: 0.01, default: 0.35 },
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
   },
+  looks: [
+    { name: "Warm white", params: { flicker: 0.15 }, colors: ["#ffb060"] },
+    { name: "Firelight", params: { flicker: 0.6, speed: 1.5 }, colors: ["#ff6a10"] },
+    { name: "Gaslight", params: { flicker: 0.08, speed: 0.5 }, colors: ["#ffd080"] },
+    { name: "Draughty", params: { flicker: 0.9, speed: 2.2 }, colors: ["#ff8a20"] },
+  ],
 };
 export function render(ctx) {
   const { n, out, colors, params, t } = ctx;

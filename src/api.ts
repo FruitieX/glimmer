@@ -25,6 +25,15 @@ export interface ColorSlot {
   default: string;
 }
 
+/** A look an effect ships with (`meta.looks`); not a user preset. */
+export interface EffectLook {
+  name: string;
+  /** Only what differs from the defaults. */
+  params: Record<string, unknown>;
+  /** `#rrggbb` per colour slot. */
+  colors: string[];
+}
+
 export interface Meta {
   name: string;
   description: string;
@@ -33,6 +42,7 @@ export interface Meta {
   category?: string;
   antialias?: boolean;
   loops: boolean;
+  looks?: EffectLook[];
 }
 
 export interface ScriptInfo {
@@ -314,6 +324,23 @@ export function colorValues(
 ) {
   const slots = meta?.colors ?? [];
   return slots.map((slot, i) => colors?.[i] ?? slot.default);
+}
+
+/** Whether these params and colours show exactly `look` (defaults filled in). */
+export function isLook(
+  meta: Meta | undefined,
+  look: { params: Record<string, unknown>; colors: string[] },
+  params: Record<string, unknown> | null | undefined,
+  colors: string[] | undefined,
+) {
+  const lower = (cs: string[]) => cs.map((c) => c.toLowerCase());
+  const want = paramValues(meta, look.params);
+  const have = paramValues(meta, params);
+  return (
+    Object.keys({ ...want, ...have }).every((k) => want[k] === have[k]) &&
+    lower(colorValues(meta, look.colors)).join() ===
+      lower(colorValues(meta, colors)).join()
+  );
 }
 
 const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");

@@ -16,6 +16,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     snow: { type: "number", label: "Snowfall", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Golden", params: { baubles: 0.6 }, colors: ["#0a8030", "#ffc020", "#ff8000", "#fff0b0", "#fff0a0", "#fff8e8", "#040a20"] },
+    { name: "Frosty", params: { snow: 0.85 }, colors: ["#0a7a50", "#a0d0ff", "#e8f0ff", "#4080ff", "#e0f0ff", "#ffffff", "#020a28"] },
+    { name: "Candy", params: { baubles: 0.7, speed: 1.4 }, colors: ["#10a030", "#ff2a8a", "#a040ff", "#20d0ff", "#ffe060", "#fff0f8", "#0a0420"] },
+    { name: "Quiet night", params: { baubles: 0.25, speed: 0.6, snow: 0.3 }, colors: ["#086a24", "#ff1010", "#ffe0a0", "#ff1010", "#ffc040", "#d8e8ff", "#02061a"] },
+  ],
 };
 
 const PERIOD = 30;

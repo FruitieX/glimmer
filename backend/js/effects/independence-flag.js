@@ -11,6 +11,12 @@ export const meta = {
     wave: { type: "number", label: "Waving", min: 0, max: 1, step: 0.01, default: 0.6 },
     brightness: { type: "number", label: "White brightness", min: 0.2, max: 1, step: 0.01, default: 0.75 },
   },
+  looks: [
+    { name: "Bright", params: { brightness: 0.95 }, colors: ["#1050e0", "#ffffff"] },
+    { name: "Moonlit", params: { speed: 0.5, wave: 0.4, brightness: 0.65 }, colors: ["#0a30c0", "#b8d0ff"] },
+    { name: "Candlelit", params: { speed: 0.6, brightness: 0.9 }, colors: ["#0a38b0", "#ffe8b8"] },
+    { name: "Windy", params: { speed: 2.2, wave: 1 }, colors: ["#0a3cb4", "#f0f4ff"] },
+  ],
 };
 
 const PERIOD = 12;

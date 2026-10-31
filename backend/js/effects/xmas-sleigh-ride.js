@@ -14,6 +14,12 @@ export const meta = {
     trail: { type: "number", label: "Trail length", min: 0.3, max: 4, step: 0.01, unit: "s", default: 2.2 },
     stars: { type: "number", label: "Stars", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Golden night", params: { trail: 3.5, stars: 0.7 }, colors: ["#020616", "#ffb030", "#ff1a10", "#d07a30", "#fff0c0"] },
+    { name: "Frosty", params: { speed: 0.7 }, colors: ["#020a20", "#a0e0ff", "#ff2020", "#c08040", "#e0f4ff"] },
+    { name: "Express", params: { speed: 2, trail: 1.2 }, colors: ["#040820", "#40ff80", "#ff2418", "#d08040", "#ffffff"] },
+    { name: "Ruby trail", params: { stars: 0.8, speed: 0.6 }, colors: ["#010412", "#ff2a40", "#ffd040", "#a06030", "#c0d0ff"] },
+  ],
 };
 
 // Two crossings per loop: left to right high up, then back lower down.

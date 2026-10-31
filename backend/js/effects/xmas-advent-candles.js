@@ -14,6 +14,12 @@ export const meta = {
     flicker: { type: "number", label: "Flicker", min: 0, max: 1, step: 0.01, default: 0.5 },
     speed: { type: "number", label: "Speed", min: 0.2, max: 3, step: 0.01, default: 1 },
   },
+  looks: [
+    { name: "White candles", params: { flicker: 0.3 }, colors: ["#ffd8a0", "#ffb040", "#0a7a2a", "#ff1818", "#04030a"] },
+    { name: "Lilac advent", params: {}, colors: ["#9a30ff", "#ffa040", "#0a6a26", "#ff40a0", "#06030e"] },
+    { name: "Gold", params: { flicker: 0.7, speed: 1.3 }, colors: ["#ffc030", "#ffd070", "#0a5a20", "#ff2010", "#05030a"] },
+    { name: "Two lit", params: { lit: 2, flicker: 0.4, speed: 0.7 }, colors: ["#e00a20", "#ff9030", "#0a6a26", "#ffd020", "#04020a"] },
+  ],
 };
 
 const PERIOD = 30;

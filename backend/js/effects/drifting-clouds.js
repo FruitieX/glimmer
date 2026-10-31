@@ -14,6 +14,13 @@ export const meta = {
     size: { type: "number", label: "Cloud size", min: 0.4, max: 2, step: 0.01, default: 1 },
     sun: { type: "boolean", label: "Sun", default: true },
   },
+  looks: [
+    { name: "Sunset", params: {}, colors: ["#3a1a8a", "#ff7a30", "#ffb0a0", "#ffa040"] },
+    { name: "Overcast", params: { clouds: 6, size: 1.4, sun: false }, colors: ["#1850c0", "#70b0ff", "#f0f4ff", "#fff1b8"] },
+    { name: "Summer", params: { clouds: 2, speed: 0.3, size: 0.7 }, colors: ["#0a60ff", "#60d0ff", "#ffffff", "#ffff80"] },
+    { name: "Moonlit", params: { sun: false }, colors: ["#040a2a", "#1a2a6a", "#b0c0ff", "#e0e8ff"] },
+    { name: "Gale", params: { clouds: 7, speed: 2.2, size: 0.8 }, colors: ["#0848d8", "#40c0ff", "#ffffff", "#ffe080"] },
+  ],
 };
 
 const PUFFS = 5;

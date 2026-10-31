@@ -14,6 +14,12 @@ export const meta = {
     milky: { type: "number", label: "Milky Way", min: 0, max: 1, step: 0.01, default: 0.5 },
     shooting: { type: "boolean", label: "Shooting stars", default: true },
   },
+  looks: [
+    { name: "Polar night", params: { stars: 0.8, milky: 0.8 }, colors: ["#f0f4ff", "#ffe0b0", "#3a3a9a", "#02040e"] },
+    { name: "Quiet", params: { stars: 0.4, speed: 0.5, milky: 0.3, shooting: false }, colors: ["#d0dcff", "#ffc890", "#1a2a5a", "#010410"] },
+    { name: "Meteor shower", params: { stars: 0.6, speed: 1.8 }, colors: ["#ffffff", "#a0d0ff", "#1a4a7a", "#01060e"] },
+    { name: "Violet sky", params: { milky: 0.7 }, colors: ["#f0e0ff", "#ffb0c0", "#4a2a8a", "#0a0218"] },
+  ],
 };
 
 const PERIOD = 40;

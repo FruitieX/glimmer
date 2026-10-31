@@ -19,6 +19,12 @@ export const meta = {
     seeds: { type: "number", label: "New seeds", min: 0, max: 1, step: 0.01, default: 0.4 },
     contrast: { type: "number", label: "Contrast", min: 1, max: 6, step: 0.1, default: 2.5 },
   },
+  looks: [
+    { name: "Coral", params: { pattern: "coral" }, colors: ["#ff3a6a", "#ffb38a", "#08020a"] },
+    { name: "Lava", params: { pattern: "spots" }, colors: ["#ff2a00", "#ffd000", "#0a0200"] },
+    { name: "Slime", params: { pattern: "worms", speed: 160 }, colors: ["#2aff00", "#e8ff60", "#020800"] },
+    { name: "Ice", params: { speed: 50, contrast: 3.5 }, colors: ["#2a6bff", "#e0f6ff", "#020612"] },
+  ],
 };
 
 // Diffusion scaled down from the classic setup so the patterns fit a few LEDs.

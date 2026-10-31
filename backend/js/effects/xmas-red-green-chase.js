@@ -19,6 +19,12 @@ export const meta = {
     width: { type: "number", label: "Band width", min: 2, max: 20, step: 1, unit: "LEDs", default: 6 },
     sparkle: { type: "number", label: "Sparkles", min: 0, max: 1, step: 0.01, default: 0.4 },
   },
+  looks: [
+    { name: "Swap", params: { mode: "swap", speed: 0.7 }, colors: ["#ff0a1a", "#00e040", "#fff8e8"] },
+    { name: "Meet", params: { mode: "meet", width: 10, sparkle: 0.2 }, colors: ["#ff2010", "#20d030", "#ffe0a0"] },
+    { name: "Frosty", params: { speed: 1.4, width: 4, sparkle: 0.7 }, colors: ["#2060ff", "#e0f0ff", "#ffffff"] },
+    { name: "Gold & red", params: { width: 8 }, colors: ["#ff1020", "#ffb000", "#fff4d0"] },
+  ],
 };
 
 const PERIOD = 16;

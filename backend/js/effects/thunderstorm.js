@@ -13,6 +13,12 @@ export const meta = {
     bolts: { type: "number", label: "Bolts to ground", min: 0, max: 1, step: 0.01, default: 0.4 },
     wind: { type: "number", label: "Cloud speed", min: 0, max: 1, step: 0.01, default: 0.3 },
   },
+  looks: [
+    { name: "Distant", params: { strikes: 4, flash: 0.4, bolts: 0.1 }, colors: ["#c8d0ff", "#30385a", "#03040a"] },
+    { name: "Supercell", params: { strikes: 30, flash: 1, bolts: 0.8, wind: 0.7 }, colors: ["#ffffff", "#3a4a7a", "#04060e"] },
+    { name: "Violet", params: {}, colors: ["#e0b0ff", "#4a2a7a", "#06020e"] },
+    { name: "Eerie", params: { strikes: 18 }, colors: ["#e0ffb0", "#2a5a3a", "#020804"] },
+  ],
 };
 
 // Time is cut into slots, each holding at most one strike; SLOTS slots make a loop.

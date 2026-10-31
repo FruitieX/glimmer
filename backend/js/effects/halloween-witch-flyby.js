@@ -13,6 +13,12 @@ export const meta = {
     moon: { type: "number", label: "Moon size", min: 0.15, max: 0.45, step: 0.01, default: 0.24 },
     magic: { type: "number", label: "Magic trail", min: 0, max: 1, step: 0.01, default: 0.7 },
   },
+  looks: [
+    { name: "Blood moon", params: { moon: 0.32 }, colors: ["#ff3a1a", "#ffb020", "#1a0410", "#ffc8a0"] },
+    { name: "Pale moon", params: { speed: 0.7, magic: 0.5 }, colors: ["#f0f0ff", "#c040ff", "#060820", "#a0c0ff"] },
+    { name: "Hex trail", params: { speed: 1.6, magic: 1 }, colors: ["#ffa020", "#ff30d0", "#12042a", "#d0a0ff"] },
+    { name: "Harvest", params: { moon: 0.4, speed: 0.5 }, colors: ["#ffd040", "#40ffa0", "#0a1430", "#ffe0b0"] },
+  ],
 };
 
 const PERIOD = 14;

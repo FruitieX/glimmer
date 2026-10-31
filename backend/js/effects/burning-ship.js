@@ -14,6 +14,12 @@ export const meta = {
     detail: { type: "number", label: "Detail", min: 16, max: 64, step: 1, default: 40 },
     bands: { type: "number", label: "Colour bands", min: 0.01, max: 0.2, step: 0.005, default: 0.05 },
   },
+  looks: [
+    { name: "Ice", params: {}, colors: ["#0a1a5a", "#2080ff", "#c0f0ff", "#010104"] },
+    { name: "Toxic", params: {}, colors: ["#0a3a10", "#40ff20", "#e0ff80", "#010301"] },
+    { name: "Royal", params: { bands: 0.1 }, colors: ["#3a0a5a", "#c030ff", "#ffc0f0", "#020104"] },
+    { name: "Molten", params: { cycle: 60, depth: 2.2 }, colors: ["#a00a00", "#ff8000", "#fff0a0", "#030100"] },
+  ],
 };
 
 export function loop(params) {

@@ -103,12 +103,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("preview") {
+        let mut args = args.clone();
+        let look = match args.iter().position(|a| a == "--look") {
+            Some(i) if i + 1 < args.len() => {
+                let name = args.remove(i + 1);
+                args.remove(i);
+                Some(name)
+            }
+            _ => None,
+        };
         let (Some(script), Some(out)) = (args.get(2), args.get(3)) else {
-            return Err("usage: glimmer preview <script.js> <out.png> [seconds] [frames]".into());
+            return Err(
+                "usage: glimmer preview <script.js> <out.png> [seconds] [frames] [--look <name>]"
+                    .into(),
+            );
         };
         let seconds = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(8.0);
         let frames = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(18);
-        preview::run(script, out, seconds, frames)?;
+        preview::run(script, out, seconds, frames, look.as_deref())?;
         return Ok(());
     }
     if args.get(1).map(String::as_str) == Some("probe") {

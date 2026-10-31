@@ -14,6 +14,12 @@ export const meta = {
     curl: { type: "number", label: "Curliness", min: 0.5, max: 3, step: 0.01, default: 1.5 },
     confetti: { type: "number", label: "Confetti", min: 0, max: 1, step: 0.01, default: 0.4 },
   },
+  looks: [
+    { name: "Confetti storm", params: { streamers: 7, confetti: 0.9, speed: 1.5 }, colors: ["#ff1e8c", "#ffe600", "#00d8ff", "#a040ff"] },
+    { name: "Lazy curls", params: { streamers: 3, speed: 0.6, curl: 2.5, confetti: 0.2 }, colors: ["#ff6ab0", "#ffb000", "#40e0ff", "#a0ff60"] },
+    { name: "Pastel", params: { curl: 1 }, colors: ["#ff70c0", "#ffe040", "#60c8ff", "#90ff70"] },
+    { name: "Tropical", params: { streamers: 5, confetti: 0.6 }, colors: ["#ff4000", "#ff00a0", "#00ffb0", "#ffe000"] },
+  ],
 };
 
 const PERIOD = 30;

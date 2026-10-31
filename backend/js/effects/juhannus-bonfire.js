@@ -14,6 +14,12 @@ export const meta = {
     sparks: { type: "number", label: "Sparks", min: 0, max: 30, step: 1, default: 10 },
     night: { type: "number", label: "Sky brightness", min: 0, max: 1, step: 0.01, default: 0.35 },
   },
+  looks: [
+    { name: "Kokko", params: { height: 1.1, sparks: 22 }, colors: ["#fff0a0", "#ff7010", "#b01800", "#283070"] },
+    { name: "Embers", params: { height: 0.55, speed: 0.6, sparks: 4 }, colors: ["#ffa040", "#e03000", "#600800", "#1a2050"] },
+    { name: "Dusk", params: { night: 0.55 }, colors: ["#ffd080", "#ff5020", "#901010", "#5a3a80"] },
+    { name: "Blue hour", params: { speed: 0.8, sparks: 18, night: 0.55 }, colors: ["#ffe070", "#ff6a00", "#a01a00", "#1a40b0"] },
+  ],
 };
 
 const PERIOD = 20;

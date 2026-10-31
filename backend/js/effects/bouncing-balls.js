@@ -14,6 +14,12 @@ export const meta = {
     bounce: { type: "number", label: "Bounciness", min: 0.5, max: 0.97, step: 0.01, default: 0.82 },
     size: { type: "number", label: "Ball size", min: 0.03, max: 0.2, step: 0.01, default: 0.08 },
   },
+  looks: [
+    { name: "Neon", params: { balls: 6 }, colors: ["#ff00a0", "#00ffd0", "#a0ff00", "#000000"] },
+    { name: "Moon bounce", params: { gravity: 0.5, bounce: 0.95 }, colors: ["#60c0ff", "#b060ff", "#ffffff", "#02030a"] },
+    { name: "Beach balls", params: { balls: 3, size: 0.12 }, colors: ["#ff2020", "#ffffff", "#2060ff", "#000208"] },
+    { name: "Marbles", params: { balls: 8, gravity: 2.5, size: 0.05 }, colors: ["#ff8000", "#20c0ff", "#ffd000", "#000000"] },
+  ],
 };
 
 const MAX = 8;

@@ -14,6 +14,12 @@ export const meta = {
     swing: { type: "number", label: "Swing", min: 0.1, max: 1, step: 0.01, default: 0.8 },
     trail: { type: "number", label: "Trail", min: 0, max: 1, step: 0.01, default: 0.4 },
   },
+  looks: [
+    { name: "Neon", params: { pendulums: 16, trail: 0.6 }, colors: ["#ff00d4", "#00ff9c", "#00c8ff", "#040010"] },
+    { name: "Ember", params: { cycle: 60 }, colors: ["#ff2a00", "#ff9a00", "#ffe066", "#0a0300"] },
+    { name: "Ice", params: { pendulums: 14, swing: 0.6, trail: 0.7 }, colors: ["#ffffff", "#7fd8ff", "#2a5bff", "#020612"] },
+    { name: "Candy", params: { pendulums: 6, cycle: 25, trail: 0.2 }, colors: ["#ff6fb5", "#b388ff", "#6ff7ff", "#08040e"] },
+  ],
 };
 
 // The slowest pendulum swings BASE times per pattern, the next one BASE + 1, ...

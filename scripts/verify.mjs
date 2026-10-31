@@ -135,6 +135,59 @@ try {
   await page.getByRole("button", { name: "Save preset" }).click();
   await page.getByRole("button", { name: "Party", exact: true }).waitFor();
 
+  // A built-in look applies its params and colours as they are: settings
+  // changed before go back to their defaults.
+  {
+    const lightUrl = `${origin}/api/fixtures/${encodeURIComponent("Test curtain")}/state`;
+    const current = async () =>
+      (await (await page.request.get(`${origin}/api/state`)).json()).fixtures[0]
+        .state;
+    const plasma = (
+      await (await page.request.get(`${origin}/api/state`)).json()
+    ).scripts.find((s) => s.id === "plasma");
+    const [look] = plasma.meta.looks;
+    assert.ok(look, "Plasma has looks");
+    const tweaked = await page.request.post(lightUrl, {
+      headers: { Origin: origin },
+      data: {
+        scriptId: "plasma",
+        params: { speed: 1.9, scale: 7.5 },
+        colors: ["#101010", "#202020", "#303030"],
+      },
+    });
+    assert.ok(tweaked.ok(), "tweak a setting");
+    await page.getByText("Plasma settings").waitFor();
+    const looks = page.getByRole("group", { name: "Looks" });
+    await looks.getByRole("button", { name: look.name, exact: true }).click();
+    await until("the look", async () => {
+      const s = await current();
+      return JSON.stringify(s.look.params) === JSON.stringify(look.params);
+    });
+    assert.deepEqual((await current()).look.colors, look.colors);
+    assert.equal((await current()).presetId, null);
+    await until(
+      "the look's chip to light up",
+      async () =>
+        (await looks
+          .getByRole("button", { name: look.name, exact: true })
+          .getAttribute("aria-pressed")) === "true",
+    );
+    await page
+      .getByText("Plasma settings")
+      .evaluate((h) => h.scrollIntoView({ block: "start" }));
+    await delay(1000);
+    await page.screenshot({ path: `${shots}/light-looks.png` });
+    await looks.getByRole("button", { name: "Default", exact: true }).click();
+    await until(
+      "the defaults",
+      async () => JSON.stringify((await current()).look.params) === "{}",
+    );
+    assert.deepEqual(
+      (await current()).look.colors,
+      plasma.meta.colors.map((c) => c.default),
+    );
+  }
+
   // Transitions: a slot can hold several, shuffled; old clients send one.
   const curtainUrl = `${origin}/api/fixtures/${encodeURIComponent("Test curtain")}`;
   const getFixture = async () =>
@@ -490,6 +543,29 @@ try {
       .scriptId,
     "rainbow",
   );
+  // An entry can use one of its effect's looks.
+  {
+    const rainbow = (await getState()).scripts.find((s) => s.id === "rainbow");
+    const look = rainbow.meta.looks.at(-1);
+    await page
+      .getByRole("combobox", { name: "Rainbow preset" })
+      .selectOption(`look:${look.name}`);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await until("the entry's look", async () => {
+      const [e] = (await getState()).playlists.find(
+        (p) => p.id === "evening",
+      ).entries;
+      return (
+        e.presetId === null &&
+        JSON.stringify(e.params) === JSON.stringify(look.params) &&
+        JSON.stringify(e.colors) === JSON.stringify(look.colors)
+      );
+    });
+    assert.equal(
+      await page.getByRole("combobox", { name: "Rainbow preset" }).inputValue(),
+      `look:${look.name}`,
+    );
+  }
 
   // "Stop playlist" keeps the effect on now, without the playlist.
   await page.goto(`${origin}/lights/Test%20curtain`);

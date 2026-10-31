@@ -12,6 +12,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     size: { type: "number", label: "Size", min: 0.1, max: 0.35, step: 0.01, default: 0.2 },
   },
+  looks: [
+    { name: "Rose garden", params: { count: 5, speed: 0.6 }, colors: ["#ff0a3c", "#ff4f8a", "#1e0210"] },
+    { name: "Candy hearts", params: { speed: 1.4, size: 0.15 }, colors: ["#ff40b0", "#ffa0e0", "#24041c"] },
+    { name: "Crimson", params: { count: 2, size: 0.3 }, colors: ["#ff0000", "#ff3a1e", "#200204"] },
+    { name: "Lilac love", params: { count: 4, speed: 0.7 }, colors: ["#d040ff", "#ff60c0", "#14041e"] },
+  ],
 };
 
 const PERIOD = 24;

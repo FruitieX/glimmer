@@ -14,10 +14,12 @@ import {
 } from "lucide-react";
 import {
   del,
+  isLook,
   post,
   put,
   seasonLabel,
   type FixtureLayout,
+  type Meta,
   type Playlist,
   type PlaylistEntry,
   type Season,
@@ -507,30 +509,60 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
                         <select
                           aria-label={`${label} preset`}
                           className={cx(smallInput, "w-0 min-w-0 flex-1")}
-                          value={e.presetId ?? ""}
+                          value={settingsValue(e, script?.meta)}
                           onChange={(ev) => {
+                            const value = ev.target.value;
+                            const look = value.startsWith(LOOK)
+                              ? script?.meta.looks?.find(
+                                  (l) => l.name === value.slice(LOOK.length),
+                                )
+                              : undefined;
                             const preset = state.presets.find(
-                              (p) => p.id === ev.target.value,
+                              (p) => p.id === value,
                             );
                             update(
                               i,
-                              preset
+                              look
                                 ? {
-                                    presetId: preset.id,
-                                    scriptId: preset.look.scriptId,
-                                    params: preset.look.params,
-                                    colors: preset.look.colors,
+                                    presetId: null,
+                                    params: look.params,
+                                    colors: look.colors,
                                   }
-                                : { presetId: null },
+                                : preset
+                                  ? {
+                                      presetId: preset.id,
+                                      scriptId: preset.look.scriptId,
+                                      params: preset.look.params,
+                                      colors: preset.look.colors,
+                                    }
+                                  : { presetId: null, params: {}, colors: [] },
                             );
                           }}
                         >
                           <option value="">Default settings</option>
-                          {state.presets.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              Preset: {p.name}
+                          {settingsValue(e, script?.meta) === CUSTOM && (
+                            <option value={CUSTOM} disabled>
+                              Custom settings
                             </option>
-                          ))}
+                          )}
+                          {!!script?.meta.looks?.length && (
+                            <optgroup label="Looks">
+                              {script.meta.looks.map((l) => (
+                                <option key={l.name} value={LOOK + l.name}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {state.presets.length > 0 && (
+                            <optgroup label="Presets">
+                              {state.presets.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                         <input
                           type="number"
@@ -826,4 +858,18 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
       </div>
     </div>
   );
+}
+
+const LOOK = "look:";
+const CUSTOM = "custom";
+
+/** The entry's settings as a value of its settings select. */
+function settingsValue(e: PlaylistEntry, meta: Meta | undefined) {
+  if (e.presetId) return e.presetId;
+  const params = e.params ?? {};
+  const colors = e.colors ?? [];
+  if (!Object.keys(params).length && !colors.length) return "";
+  const look = meta?.looks?.find((l) => isLook(meta, l, params, colors));
+  if (look) return LOOK + look.name;
+  return isLook(meta, { params: {}, colors: [] }, params, colors) ? "" : CUSTOM;
 }

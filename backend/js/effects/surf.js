@@ -14,6 +14,12 @@ export const meta = {
     shore: { type: "number", label: "Shoreline", min: 0.2, max: 0.8, step: 0.01, default: 0.45 },
     side: { type: "select", label: "Sea on the", options: ["left", "right"], labels: ["Left", "Right"], default: "left" },
   },
+  looks: [
+    { name: "Tropical", params: {}, colors: ["#0060a0", "#00e0c8", "#ffffff", "#ffd080"] },
+    { name: "Stormy", params: { period: 4, size: 0.4 }, colors: ["#021a3a", "#1a5a8a", "#e0f0ff", "#c08040"] },
+    { name: "Calm", params: { period: 12, size: 0.12 }, colors: ["#04305a", "#2a8ad0", "#e8f8ff", "#d0a060"] },
+    { name: "Sunset beach", params: { side: "right" }, colors: ["#2a0a5a", "#ff5a6a", "#fff0e0", "#ff9a40"] },
+  ],
 };
 
 // Waves come in sets of WAVES of different sizes, then the set repeats.

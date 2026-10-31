@@ -14,6 +14,12 @@ export const meta = {
     skill: { type: "number", label: "Player skill", min: 0, max: 1, step: 0.01, default: 0.9 },
     glow: { type: "number", label: "Ball glow", min: 0.3, max: 2, step: 0.05, default: 1 },
   },
+  looks: [
+    { name: "Retro", params: { rows: 6 }, colors: ["#ff2020", "#ffe000", "#ffffff", "#000000"] },
+    { name: "Ocean", params: {}, colors: ["#00c0ff", "#00ffb0", "#ffffff", "#000610"] },
+    { name: "Synthwave", params: { speed: 14 }, colors: ["#ff20c0", "#6020ff", "#20ffff", "#06020e"] },
+    { name: "Lazy", params: { speed: 5, skill: 0.6, glow: 1.5 }, colors: ["#a0ff40", "#20d0a0", "#ffe8a0", "#020604"] },
+  ],
 };
 
 // Logical grid mapped onto the LEDs by position. On a curtain it matches the

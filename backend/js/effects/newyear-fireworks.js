@@ -14,6 +14,12 @@ export const meta = {
     trails: { type: "number", label: "Trails", min: 0.1, max: 2, step: 0.01, default: 0.7 },
     sky: { type: "number", label: "Sky brightness", min: 0, max: 0.3, step: 0.01, default: 0.05 },
   },
+  looks: [
+    { name: "Gold rush", params: { rate: 1.2 }, colors: ["#ffd040", "#ff9a20", "#fff0b0", "#ffb000"] },
+    { name: "Grand finale", params: { rate: 2.6, size: 0.4, trails: 1 }, colors: ["#ffc24a", "#ff2080", "#40a0ff", "#a0ff40"] },
+    { name: "Silver", params: { rate: 0.5, size: 0.45, trails: 1.4 }, colors: ["#ffffff", "#c0d0ff", "#8080ff", "#e0f0ff"] },
+    { name: "Pastel", params: { rate: 0.9, size: 0.25, sky: 0.1 }, colors: ["#ffd0a0", "#ff90c0", "#a0c0ff", "#a0ffd0"] },
+  ],
 };
 
 const MAX = 240;

@@ -13,6 +13,12 @@ export const meta = {
     softness: { type: "number", label: "Softness", min: 0, max: 1, step: 0.05, default: 0.35 },
     accent: { type: "number", label: "Accent glow", min: 0, max: 1, step: 0.05, default: 0.35 },
   },
+  looks: [
+    { name: "Neon", params: { cycle: 8, softness: 0.15, accent: 0.6 }, colors: ["#ff00b0", "#00e0ff", "#c0ff00"] },
+    { name: "Pastel", params: { cycle: 30, softness: 0.7 }, colors: ["#ffb0d8", "#a8d8ff", "#fff0a0"] },
+    { name: "Mosaic", params: { tiles: 5, softness: 0.2 }, colors: ["#ff4020", "#2050ff", "#ffd000"] },
+    { name: "Forest", params: { tiles: 1.5, cycle: 24 }, colors: ["#40e040", "#008060", "#e0ff40"] },
+  ],
 };
 
 export function loop(params) {

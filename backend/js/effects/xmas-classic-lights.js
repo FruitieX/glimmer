@@ -19,6 +19,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 0.6 },
     depth: { type: "number", label: "Dimming", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Steady glow", params: { mode: "steady" }, colors: ["#ff1a00", "#00d040", "#1040ff", "#ffb000"] },
+    { name: "Chase", params: { mode: "chase", speed: 1.2 }, colors: ["#ff0a0a", "#10e020", "#2a40ff", "#ffc000"] },
+    { name: "Pastel", params: { mode: "glow", speed: 0.4 }, colors: ["#ff7a8a", "#80ffa0", "#80a0ff", "#ffe080"] },
+    { name: "Icy", params: { depth: 0.8 }, colors: ["#2050ff", "#a0d0ff", "#00c0ff", "#ffffff"] },
+  ],
 };
 
 const PERIOD = 24;

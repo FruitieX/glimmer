@@ -18,6 +18,12 @@ export const meta = {
       default: "x",
     },
   },
+  looks: [
+    { name: "Cyber", params: {}, colors: ["#00e5ff", "#0030a0"] },
+    { name: "Radar", params: { period: 4, trail: 1.5 }, colors: ["#40ff60", "#004a20"] },
+    { name: "Rising", params: { axis: "y", period: 3 }, colors: ["#ffd040", "#ff3000"] },
+    { name: "Strobe", params: { period: 0.8, width: 0.06, trail: 0.2 }, colors: ["#ffffff", "#5a20ff"] },
+  ],
 };
 
 export function loop(params) {

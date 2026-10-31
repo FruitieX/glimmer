@@ -14,6 +14,13 @@ export const meta = {
     zoom: { type: "number", label: "Detail", min: 0.5, max: 6, step: 0.25, default: 2.5 },
     spin: { type: "boolean", label: "Rotate", default: true },
   },
+  looks: [
+    { name: "Sunburst", params: { segments: 8 }, colors: ["#ff2000", "#ff8000", "#ffd000", "#ff0060"] },
+    { name: "Ocean", params: { speed: 0.03, zoom: 1.5 }, colors: ["#0040ff", "#00b0ff", "#00ffd0", "#4020c0"] },
+    { name: "Candy", params: { segments: 4, speed: 0.12 }, colors: ["#ff60c0", "#ffe040", "#60ff90", "#60a0ff"] },
+    { name: "Psychedelic", params: { segments: 12, speed: 0.25, zoom: 4 }, colors: ["#ff00ff", "#00ff60", "#ffff00", "#00c0ff"] },
+    { name: "Emerald", params: { spin: false, segments: 5 }, colors: ["#00ff80", "#00c0ff", "#a0ff20", "#00ffd0"] },
+  ],
 };
 
 export function loop(params) {

@@ -13,6 +13,12 @@ export const meta = {
     aurora: { type: "number", label: "Aurora", min: 0, max: 1, step: 0.01, default: 0.7 },
     snow: { type: "number", label: "Snowfall", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Arctic", params: { aurora: 0.9, snow: 0.3 }, colors: ["#00ffb0", "#2060ff", "#e8f8ff", "#010614"] },
+    { name: "Crimson aurora", params: { speed: 0.5 }, colors: ["#ff2050", "#a020ff", "#fff0f4", "#0a0214"] },
+    { name: "Snowstorm", params: { aurora: 0.6, snow: 0.9, speed: 1.2 }, colors: ["#40ff80", "#40a0ff", "#ffffff", "#020814"] },
+    { name: "Emerald", params: { speed: 0.4, aurora: 0.85 }, colors: ["#20ff40", "#00ffd0", "#e0fff0", "#010a0a"] },
+  ],
 };
 
 const PERIOD = 48;

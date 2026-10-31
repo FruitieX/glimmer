@@ -12,6 +12,12 @@ export const meta = {
     scale: { type: "number", label: "Scale", min: 0.5, max: 5, step: 0.1, default: 2.2 },
     warp: { type: "number", label: "Warp", min: 0, max: 2.5, step: 0.05, default: 1.3 },
   },
+  looks: [
+    { name: "Ocean ink", params: { speed: 0.04, warp: 1.8 }, colors: ["#020a40", "#0080c0", "#60ffe0"] },
+    { name: "Lava", params: { speed: 0.08, scale: 1.6 }, colors: ["#300200", "#e02000", "#ffc020"] },
+    { name: "Toxic", params: { scale: 3.2, warp: 2 }, colors: ["#02200a", "#20c040", "#e0ff40"] },
+    { name: "Neon", params: { speed: 0.12, warp: 0.8 }, colors: ["#20005a", "#ff00c0", "#00f0ff"] },
+  ],
 };
 
 export function loop(params) {

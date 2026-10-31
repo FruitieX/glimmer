@@ -12,6 +12,12 @@ export const meta = {
     waves: { type: "number", label: "Wavelength", min: 0.3, max: 1.2, step: 0.01, default: 0.55 },
     distance: { type: "number", label: "Source distance", min: 0, max: 1, step: 0.05, default: 0.8 },
   },
+  looks: [
+    { name: "Ocean", params: { speed: 0.25, waves: 0.8 }, colors: ["#00a0ff", "#30ffd0", "#010818"] },
+    { name: "Ember", params: { speed: 0.6, distance: 0.5 }, colors: ["#ff4010", "#ffc030", "#140400"] },
+    { name: "Neon", params: { speed: 1, waves: 0.35 }, colors: ["#ff00e0", "#a0ff00", "#06020c"] },
+    { name: "Aurora", params: { speed: 0.2, waves: 1, distance: 1 }, colors: ["#30ff80", "#8040ff", "#020a14"] },
+  ],
 };
 
 // Ripples repeat after 1 / speed; the sources circle once in 8 ripple periods.

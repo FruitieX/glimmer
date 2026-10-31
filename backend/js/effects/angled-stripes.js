@@ -13,6 +13,12 @@ export const meta = {
     gap: { type: "number", label: "Dark gap", min: 0, max: 0.8, step: 0.05, default: 0.3 },
     angle: { type: "number", label: "Angle", min: -90, max: 90, step: 1, default: 30, unit: "°" },
   },
+  looks: [
+    { name: "Ocean", params: { speed: 0.3, count: 2 }, colors: ["#00b4d8", "#0050ff", "#40ffd0"] },
+    { name: "Sunset", params: { gap: 0.2, angle: 15 }, colors: ["#ff3000", "#ff9e00", "#d0207a"] },
+    { name: "Candy cane", params: { speed: 1, count: 5, gap: 0.1, angle: 45 }, colors: ["#ff1030", "#fff0f0", "#ff1030"] },
+    { name: "Neon", params: { speed: 1.5, count: 4, gap: 0.5, angle: -45 }, colors: ["#ff00c8", "#00ffea", "#b000ff"] },
+  ],
 };
 
 export function loop(params, colors) {

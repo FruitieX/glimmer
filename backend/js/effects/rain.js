@@ -13,6 +13,12 @@ export const meta = {
     wind: { type: "number", label: "Wind", min: -1, max: 1, step: 0.01, default: 0.2 },
     splash: { type: "number", label: "Splash size", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Drizzle", params: { drops: 8, speed: 0.5, wind: 0, splash: 0.3 }, colors: ["#b0d8ff", "#e8f6ff", "#050c1a"] },
+    { name: "Downpour", params: { drops: 34, speed: 1.4, wind: 0.5 }, colors: ["#b0d8ff", "#ffffff", "#0a1020"] },
+    { name: "Neon city", params: { wind: -0.2 }, colors: ["#ff2ad4", "#00f0ff", "#10021e"] },
+    { name: "Toxic", params: { drops: 20 }, colors: ["#5cff3a", "#e0ff80", "#021006"] },
+  ],
 };
 
 // Each drop falls once per 1 / speed seconds and lands somewhere new every

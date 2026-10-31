@@ -13,6 +13,12 @@ export const meta = {
     start: { type: "number", label: "Starting length", min: 2, max: 8, step: 1, default: 3 },
     width: { type: "number", label: "Thickness", min: 0.6, max: 2, step: 0.05, default: 1 },
   },
+  looks: [
+    { name: "Neon", params: { speed: 8 }, colors: ["#ff40ff", "#6a00ff", "#00ffd0", "#04000a"] },
+    { name: "Fire", params: {}, colors: ["#ffe060", "#ff3000", "#00c8ff", "#060100"] },
+    { name: "Ice", params: { speed: 3, width: 1.3 }, colors: ["#ffffff", "#2a7bff", "#ff4060", "#010410"] },
+    { name: "Coral", params: { start: 6 }, colors: ["#ffa040", "#ff2a6a", "#40ff80", "#06020a"] },
+  ],
 };
 
 // Logical grid mapped onto the LEDs by position. On a curtain the grid

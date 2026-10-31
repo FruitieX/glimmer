@@ -12,6 +12,12 @@ export const meta = {
     folds: { type: "number", label: "Folds", min: 0.5, max: 4, step: 0.1, default: 1.6 },
     sheen: { type: "number", label: "Sheen", min: 0, max: 1, step: 0.05, default: 0.7 },
   },
+  looks: [
+    { name: "Emerald", params: {}, colors: ["#006a40", "#00c8a0", "#d0ffe8"] },
+    { name: "Gold", params: { sheen: 0.85 }, colors: ["#e05a00", "#ffb000", "#fff2c0"] },
+    { name: "Midnight", params: { speed: 0.04 }, colors: ["#0a1a8a", "#5a20ff", "#c8e0ff"] },
+    { name: "Rose", params: { folds: 2.5, speed: 0.1 }, colors: ["#c01050", "#ff6a9a", "#ffe8f0"] },
+  ],
 };
 
 export function loop(params) {

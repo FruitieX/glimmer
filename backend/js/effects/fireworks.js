@@ -13,6 +13,12 @@ export const meta = {
     gravity: { type: "number", label: "Gravity", min: 0, max: 1, step: 0.01, default: 0.35 },
     fade: { type: "number", label: "Spark life", min: 0.5, max: 4, step: 0.1, unit: "s", default: 1.8 },
   },
+  looks: [
+    { name: "Gold", params: { sparks: 50 }, colors: ["#ffd040", "#fff0c0", "#ff9a20"] },
+    { name: "Tricolour", params: {}, colors: ["#ff2030", "#ffffff", "#2050ff"] },
+    { name: "Finale", params: { rate: 1.8, sparks: 40, fade: 1.2 }, colors: ["#ff20a0", "#20ff60", "#ffe020"] },
+    { name: "Willow", params: { rate: 0.3, gravity: 0.7, fade: 3.5 }, colors: ["#fff0d0", "#c0e0ff", "#ffd080"] },
+  ],
 };
 
 const MAX = 240;

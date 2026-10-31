@@ -14,6 +14,12 @@ export const meta = {
     size: { type: "number", label: "Balloon size", min: 0.06, max: 0.25, step: 0.01, default: 0.12 },
     sky: { type: "number", label: "Sky brightness", min: 0, max: 0.5, step: 0.01, default: 0.12 },
   },
+  looks: [
+    { name: "Party", params: { count: 10, speed: 1.4 }, colors: ["#ff1e8c", "#ffe600", "#00c8ff", "#a040ff"] },
+    { name: "Pastel", params: { speed: 0.6, size: 0.15 }, colors: ["#ff8ab4", "#fff08a", "#8ac8ff", "#9affc0"] },
+    { name: "Student", params: { count: 7 }, colors: ["#ffffff", "#1a40ff", "#ff2020", "#ffd000"] },
+    { name: "Big bunch", params: { count: 3, size: 0.22, speed: 0.7 }, colors: ["#ff3a00", "#ff00a0", "#30ff60", "#20a0ff"] },
+  ],
 };
 
 const PERIOD = 40;

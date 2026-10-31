@@ -13,6 +13,12 @@ export const meta = {
     scale: { type: "number", label: "Cloud size", min: 0.2, max: 3, step: 0.05, default: 1 },
     variety: { type: "number", label: "Variety", min: 0, max: 1, step: 0.05, default: 0.5 },
   },
+  looks: [
+    { name: "Ocean", params: { cycle: 90 }, colors: ["#00b4d8", "#0057ff", "#00f5d4", "#3a0ca3"] },
+    { name: "Ember", params: { cycle: 40, variety: 0.7 }, colors: ["#ff3c00", "#ffae00", "#ff006e", "#ff7b00"] },
+    { name: "Forest", params: { scale: 0.6 }, colors: ["#38e54d", "#00a86b", "#c6ff00", "#008f7a"] },
+    { name: "Candy", params: { cycle: 30, scale: 1.5, variety: 0.8 }, colors: ["#ff5fa2", "#a26bff", "#5ce1ff", "#ffd166"] },
+  ],
 };
 
 export function loop(params) {

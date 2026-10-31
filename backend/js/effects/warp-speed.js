@@ -12,6 +12,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.05, max: 1, step: 0.01, default: 0.3 },
     streaks: { type: "number", label: "Streak length", min: 0, max: 0.3, step: 0.01, default: 0.12 },
   },
+  looks: [
+    { name: "Hyperspace", params: { stars: 60, speed: 0.8, streaks: 0.25 }, colors: ["#ffffff", "#4060ff", "#010210"] },
+    { name: "Cruise", params: { stars: 20, speed: 0.12, streaks: 0.04 }, colors: ["#fff0d0", "#ffb060", "#030208"] },
+    { name: "Nebula", params: { stars: 36 }, colors: ["#ffe0ff", "#d030ff", "#0a0218"] },
+    { name: "Emerald", params: { speed: 0.5, streaks: 0.18 }, colors: ["#e0fff0", "#20ff80", "#010a06"] },
+  ],
 };
 
 // Each star takes 1 / speed seconds to fly past; after CYCLES of those every

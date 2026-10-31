@@ -13,6 +13,13 @@ export const meta = {
     scale: { type: "number", label: "Cloud size", min: 0.3, max: 3, step: 0.05, default: 1 },
     octaves: { type: "number", label: "Detail", min: 1, max: 5, step: 1, default: 4 },
   },
+  looks: [
+    { name: "Sunset", params: {}, colors: ["#2a0a40", "#c04070", "#ffb040"] },
+    { name: "Storm", params: { speed: 0.4, cover: 0.8 }, colors: ["#020614", "#3050c0", "#e0e8ff"] },
+    { name: "Dawn", params: { cover: 0.35 }, colors: ["#1a1050", "#e080a0", "#ffe0a0"] },
+    { name: "Daytime", params: { scale: 1.6, octaves: 3 }, colors: ["#0a50d0", "#e0f0ff", "#ffffff"] },
+    { name: "Alien", params: {}, colors: ["#04001a", "#20c0a0", "#d0ff60"] },
+  ],
 };
 
 // The noise tiles every P units, and the sky drifts exactly P units per loop.

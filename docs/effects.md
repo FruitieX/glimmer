@@ -38,6 +38,16 @@ export const meta = {
       default: "x",
     },
   },
+  // Named looks shown as one-tap choices next to the defaults (see Looks).
+  looks: [
+    { name: "Ember", params: { speed: 0.5 }, colors: ["#ff6a00", "#c0103a"] },
+    {
+      name: "Ice",
+      params: { speed: 0.15, mirror: true },
+      colors: ["#7fe8ff", "#2a4dff"],
+    },
+    { name: "Neon", params: { speed: 1.2 }, colors: ["#39ff14", "#ff00d4"] },
+  ],
 };
 
 // Optional: seconds after which the effect repeats exactly. Export it only
@@ -89,6 +99,16 @@ Prefer smooth motion and gentle colour, avoid harsh full-brightness strobing, an
 ### Categories
 
 Set `meta.category` to one of: `Basics`, `Gradients & patterns`, `Plasma & flow`, `Nature`, `Particles & physics`, `Simulations & games`, `Fractals`, `Seasonal`, `Images`.
+
+### Looks
+
+`meta.looks` lists named variations of the effect that the app offers as one-tap choices, next to "Default" (the defaults themselves). Each look has:
+
+- `name`: short and evocative, one or two words ("Ember", "Deep sea", "Pastel"), unique within the effect and not "Default".
+- `params`: only the settings that differ from their defaults; picking the look resets every other setting to its default. Values must be allowed by the parameter (within `min`..`max`, one of a select's `options`, `true`/`false`).
+- `colors`: one `"#rrggbb"` per colour slot, in the order of `meta.colors` (`[]` when the effect has none).
+
+A look that doesn't fit the params or colour slots makes the check fail with a message saying why. Give every effect with colours or settings 3–4 looks that clearly differ from the defaults and from each other: change the palette to suit the effect (a fire look in reds and oranges, an ocean look in blues and teals; seasonal effects keep their season's colours) and vary speed, size or density where that makes the look distinct (a slow, calm look and a lively one). LEDs are additive and saturated: keep foreground colours vivid and bright, and backgrounds dark; muddy dark colours and pale greys look dim on LEDs.
 
 ### Smooth edges
 

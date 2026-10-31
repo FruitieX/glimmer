@@ -13,6 +13,12 @@ export const meta = {
     size: { type: "number", label: "Bubble size", min: 0.05, max: 0.3, step: 0.01, default: 0.13 },
     wobble: { type: "number", label: "Wobble", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Tropical", params: { bubbles: 14 }, colors: ["#00282a", "#40ffd0", "#e0fff8"] },
+    { name: "Champagne", params: { bubbles: 20, speed: 0.25, size: 0.09 }, colors: ["#120802", "#ffd040", "#fff0a0"] },
+    { name: "Lava lamp", params: { bubbles: 5, speed: 0.05, size: 0.25, wobble: 0.9 }, colors: ["#200008", "#ff3060", "#ffb0c0"] },
+    { name: "Deep sea", params: { speed: 0.08 }, colors: ["#000818", "#3080ff", "#a0e0ff"] },
+  ],
 };
 
 // Every bubble rises a whole number of times per loop.

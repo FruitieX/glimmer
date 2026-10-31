@@ -13,6 +13,12 @@ export const meta = {
     spokes: { type: "number", label: "Spokes", min: 4, max: 12, step: 1, default: 6 },
     dew: { type: "number", label: "Dew", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Silver web", params: { spokes: 8, dew: 0.8 }, colors: ["#d8e0ff", "#ffffff", "#ff1010", "#04061a"] },
+    { name: "Toxic", params: { speed: 1.5 }, colors: ["#60ff40", "#e0ffa0", "#ff00a0", "#04140a"] },
+    { name: "Pumpkin", params: { spokes: 5, dew: 0.3 }, colors: ["#ffa020", "#fff0c0", "#a020ff", "#14040a"] },
+    { name: "Widow", params: { speed: 0.5, spokes: 10 }, colors: ["#c040ff", "#ffc0ff", "#ff2020", "#0a0118"] },
+  ],
 };
 
 const PERIOD = 24;

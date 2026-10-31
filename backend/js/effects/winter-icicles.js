@@ -13,6 +13,12 @@ export const meta = {
     speed: { type: "number", label: "Drip speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     sky: { type: "number", label: "Sky brightness", min: 0, max: 1, step: 0.01, default: 0.4 },
   },
+  looks: [
+    { name: "Long thaw", params: { count: 7, length: 0.9, speed: 0.5 }, colors: ["#40b0ff", "#d0f0ff", "#041030"] },
+    { name: "Frozen fringe", params: { count: 24, length: 0.35, speed: 1.4 }, colors: ["#a0e0ff", "#ffffff", "#020a20"] },
+    { name: "Aqua", params: { count: 14 }, colors: ["#00e0d0", "#c0fff8", "#021a24"] },
+    { name: "Moonlit", params: { sky: 0.2, speed: 0.7 }, colors: ["#9090ff", "#e8e8ff", "#0a0828"] },
+  ],
 };
 
 const PERIOD = 30;

@@ -13,6 +13,13 @@ export const meta = {
     spread: { type: "number", label: "Spread", min: 0, max: 1, step: 0.01, default: 0.5 },
     sway: { type: "number", label: "Sway", min: 0, max: 1, step: 0.01, default: 0.3 },
   },
+  looks: [
+    { name: "Sparkler", params: { rate: 90, height: 0.5, spread: 0.9 }, colors: ["#ffffff", "#fff0a0", "#ffb000"] },
+    { name: "Ice", params: {}, colors: ["#ffffff", "#80d8ff", "#2a40ff"] },
+    { name: "Emerald", params: { height: 1.1 }, colors: ["#f0ffd0", "#60ff40", "#008a40"] },
+    { name: "Neon", params: { rate: 60, sway: 0.6 }, colors: ["#ffe0ff", "#ff40e0", "#7a00ff"] },
+    { name: "Gentle", params: { rate: 12, height: 0.5, spread: 0.3 }, colors: ["#ffffff", "#ffd040", "#ff4000"] },
+  ],
 };
 
 const MAX = 260;

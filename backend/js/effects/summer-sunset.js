@@ -14,6 +14,12 @@ export const meta = {
     shimmer: { type: "number", label: "Shimmer", min: 0, max: 1, step: 0.01, default: 0.6 },
     horizon: { type: "number", label: "Horizon", min: 0.15, max: 0.6, step: 0.01, default: 0.35 },
   },
+  looks: [
+    { name: "Tropical", params: {}, colors: ["#fff0a0", "#ff2a6a", "#6a0aa0", "#004a6a"] },
+    { name: "Golden", params: { shimmer: 0.8 }, colors: ["#fff2b0", "#ffa000", "#7a0a6a", "#1a1050"] },
+    { name: "Dusk", params: { size: 0.1, shimmer: 0.4 }, colors: ["#ffb0a0", "#c03aa0", "#1a0a50", "#050a2a"] },
+    { name: "Big sun", params: { size: 0.26, horizon: 0.25 }, colors: ["#ffe060", "#ff3a00", "#5a0a3a", "#0a1a4a"] },
+  ],
 };
 
 const PERIOD = 60;

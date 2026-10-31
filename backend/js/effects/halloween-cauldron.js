@@ -13,6 +13,12 @@ export const meta = {
     bubbles: { type: "number", label: "Bubbles", min: 1, max: 12, step: 1, default: 6 },
     mist: { type: "number", label: "Mist", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Toxic", params: { speed: 1.5, bubbles: 10 }, colors: ["#a0ff20", "#30ff90", "#ff8a00", "#1a2a20"] },
+    { name: "Witch's brew", params: { mist: 0.9 }, colors: ["#c040ff", "#ff40c0", "#ff5010", "#241a36"] },
+    { name: "Bloodmoon", params: { speed: 0.7, bubbles: 4 }, colors: ["#ff2020", "#ff7a10", "#ff4a00", "#2a1418"] },
+    { name: "Frost hex", params: { speed: 0.6, mist: 0.4 }, colors: ["#40e8ff", "#6a60ff", "#20a0ff", "#14203a"] },
+  ],
 };
 
 const PERIOD = 24;

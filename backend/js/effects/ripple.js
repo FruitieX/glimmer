@@ -12,6 +12,12 @@ export const meta = {
     cx: { type: "number", label: "Centre (horizontal)", min: 0, max: 1, step: 0.01, default: 0.5 },
     cy: { type: "number", label: "Centre (vertical)", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Ocean", params: { speed: 0.25 }, colors: ["#00b4ff", "#001233"] },
+    { name: "Lava", params: { rings: 2, speed: 0.2 }, colors: ["#ff6a00", "#300400"] },
+    { name: "Neon", params: { rings: 5, speed: 0.8 }, colors: ["#ff00e0", "#0a0030"] },
+    { name: "Lily pond", params: { cx: 0.15, cy: 0.8 }, colors: ["#a0ff40", "#021a10"] },
+  ],
 };
 export function loop(params) {
   return 1 / params.speed;

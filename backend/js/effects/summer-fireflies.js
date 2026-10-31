@@ -14,6 +14,12 @@ export const meta = {
     blink: { type: "number", label: "Blinking", min: 0.2, max: 3, step: 0.01, default: 1 },
     night: { type: "number", label: "Night brightness", min: 0, max: 1, step: 0.01, default: 0.35 },
   },
+  looks: [
+    { name: "Swarm", params: { count: 26, speed: 1.4, blink: 1.6 }, colors: ["#e0ff40", "#ffffe0", "#06183a", "#0c3a18"] },
+    { name: "Amber", params: { count: 16 }, colors: ["#ffa000", "#fff0c0", "#0a0a2a", "#0a3010"] },
+    { name: "Blue ghost", params: { count: 14, speed: 0.5, blink: 0.5 }, colors: ["#40c8ff", "#e0f8ff", "#020a20", "#04201a"] },
+    { name: "Fairy", params: { count: 16 }, colors: ["#ff6ad8", "#fff0ff", "#100630", "#0a2a20"] },
+  ],
 };
 
 const PERIOD = 40;

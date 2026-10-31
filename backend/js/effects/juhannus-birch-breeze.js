@@ -13,6 +13,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     sun: { type: "number", label: "Sun flecks", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Golden hour", params: { sun: 0.8, breeze: 0.3 }, colors: ["#80d020", "#ffc050", "#fff0d8", "#ff80c0"] },
+    { name: "Windy", params: { breeze: 0.9, speed: 1.6 }, colors: ["#50e040", "#fff8c0", "#f0f4ec", "#80c0ff"] },
+    { name: "Midnight", params: { sun: 0.2, speed: 0.6 }, colors: ["#30d070", "#ffb0d0", "#e0e4ff", "#8070ff"] },
+    { name: "Fresh spring", params: { sun: 0.6 }, colors: ["#90ff40", "#ffffc0", "#ffffff", "#b0e0ff"] },
+  ],
 };
 
 const PERIOD = 30;

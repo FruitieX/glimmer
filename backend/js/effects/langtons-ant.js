@@ -20,6 +20,12 @@ export const meta = {
     },
     steps: { type: "number", label: "Steps before restarting", min: 100, max: 3000, step: 50, default: 800 },
   },
+  looks: [
+    { name: "Highway", params: { speed: 30, ants: 1, steps: 2500 }, colors: ["#30ff80", "#1050c0", "#ffffff", "#010604"] },
+    { name: "Chaos", params: { rule: "RLR", ants: 3 }, colors: ["#ff3060", "#ffa000", "#e0f0ff", "#060104"] },
+    { name: "Symmetric", params: { rule: "LLRR", speed: 20 }, colors: ["#00e0ff", "#c040ff", "#fff0a0", "#02030a"] },
+    { name: "Builder", params: { rule: "LRRRRRLLR", speed: 25, ants: 4, steps: 1500 }, colors: ["#ffd000", "#ff3000", "#ffffff", "#060200"] },
+  ],
 };
 
 // Logical grid mapped onto the LEDs by position. On a curtain the grid

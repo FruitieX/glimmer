@@ -12,6 +12,12 @@ export const meta = {
     trail: { type: "number", label: "Trail length", min: 0, max: 1.5, step: 0.05, default: 0.7 },
     angle: { type: "number", label: "Angle", min: -90, max: 90, step: 1, default: 0, unit: "°" },
   },
+  looks: [
+    { name: "Sunset", params: { cycle: 14 }, colors: ["#ff2050", "#ffb000"] },
+    { name: "Neon", params: { cycle: 5, width: 0.06 }, colors: ["#ff00d0", "#00ff80"] },
+    { name: "Ocean", params: { cycle: 18, trail: 1.2 }, colors: ["#0050ff", "#00ffd0"] },
+    { name: "Diagonal", params: { width: 0.15, angle: 45 }, colors: ["#ffd000", "#a020ff"] },
+  ],
 };
 
 export function loop(params) {

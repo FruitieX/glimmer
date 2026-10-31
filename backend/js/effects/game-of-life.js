@@ -13,6 +13,12 @@ export const meta = {
     fade: { type: "number", label: "Fade", min: 0, max: 1, step: 0.01, default: 0.6 },
     brightness: { type: "number", label: "Brightness", min: 0.2, max: 1, step: 0.01, default: 0.8 },
   },
+  looks: [
+    { name: "Fire", params: {}, colors: ["#ffe060", "#ff2000", "#050100"] },
+    { name: "Ocean", params: {}, colors: ["#80fff0", "#0040ff", "#000410"] },
+    { name: "Neon", params: { speed: 6, fade: 0.3 }, colors: ["#ff40ff", "#4000ff", "#03000a"] },
+    { name: "Blossom", params: { speed: 1, density: 0.45, fade: 0.9 }, colors: ["#ff80d0", "#ff2060", "#050104"] },
+  ],
 };
 
 // Logical grid mapped onto the LEDs by position. On a curtain the grid

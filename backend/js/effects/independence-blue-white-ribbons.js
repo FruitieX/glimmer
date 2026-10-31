@@ -12,6 +12,12 @@ export const meta = {
     width: { type: "number", label: "Ribbon width", min: 0.3, max: 3, step: 0.01, default: 1 },
     glints: { type: "number", label: "Glints", min: 0, max: 1, step: 0.01, default: 0.3 },
   },
+  looks: [
+    { name: "Snowy", params: { speed: 0.3, width: 1.6, glints: 0.6 }, colors: ["#2050e0", "#ffffff", "#010618"] },
+    { name: "Midnight", params: { speed: 0.25, glints: 0.1 }, colors: ["#0828a0", "#a8c0ff", "#010312"] },
+    { name: "Frosty", params: { width: 1.4, glints: 0.5 }, colors: ["#1878ff", "#e0f4ff", "#010a20"] },
+    { name: "Lively", params: { speed: 1.2, width: 0.6, glints: 0.5 }, colors: ["#1060ff", "#e8f0ff", "#020a2a"] },
+  ],
 };
 
 const PERIOD = 40;

@@ -13,6 +13,12 @@ export const meta = {
     ripples: { type: "number", label: "Ripples", min: 0, max: 1, step: 0.01, default: 0.6 },
     background: { type: "number", label: "Background", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Racing heart", params: { bpm: 120, ripples: 0.8 }, colors: ["#ff2a2a", "#ff6a50", "#200008"] },
+    { name: "Sleepy", params: { bpm: 44, ripples: 0.4 }, colors: ["#ff2a8a", "#ff90e0", "#1e0418"] },
+    { name: "Big heart", params: { size: 0.48, ripples: 0.3 }, colors: ["#ff1e5a", "#ff7ab0", "#26000e"] },
+    { name: "Violet", params: { bpm: 80 }, colors: ["#e020ff", "#ff60c8", "#16021e"] },
+  ],
 };
 
 const BEATS = 8;

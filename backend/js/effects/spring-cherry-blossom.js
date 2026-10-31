@@ -14,6 +14,12 @@ export const meta = {
     size: { type: "number", label: "Petal size", min: 0.02, max: 0.15, step: 0.01, default: 0.05 },
     background: { type: "number", label: "Background", min: 0, max: 1, step: 0.01, default: 0.3 },
   },
+  looks: [
+    { name: "Dusk", params: { background: 0.2 }, colors: ["#ff6aa8", "#ffe0f0", "#5a2a9a", "#2a7a3a"] },
+    { name: "Windy", params: { count: 30, breeze: 2.5 }, colors: ["#ff7ab8", "#ffffff", "#3c90e0", "#40c040"] },
+    { name: "Apple blossom", params: { size: 0.07 }, colors: ["#ffffff", "#ffd0e0", "#2a80d8", "#50c050"] },
+    { name: "Night sakura", params: { count: 14, breeze: 0.5, background: 0.4 }, colors: ["#ff60b8", "#ffd8ec", "#101a50", "#103a20"] },
+  ],
 };
 
 const PERIOD = 40;

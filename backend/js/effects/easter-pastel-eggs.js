@@ -13,6 +13,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 0.8 },
     size: { type: "number", label: "Egg size", min: 8, max: 40, step: 1, unit: "LEDs", default: 14 },
   },
+  looks: [
+    { name: "Bright", params: {}, colors: ["#ff60a0", "#40b0ff", "#ffd040", "#60f060", "#0a2a10"] },
+    { name: "Lavender", params: { speed: 0.5 }, colors: ["#d080ff", "#80a0ff", "#ff90d0", "#90f0d0", "#160a2a"] },
+    { name: "Sunny", params: { size: 20 }, colors: ["#ffa080", "#80f0ff", "#ffe040", "#d0ff80", "#1a3a08"] },
+    { name: "Tiny eggs", params: { speed: 1.4, size: 9 }, colors: ["#ff90d0", "#90b0ff", "#fff090", "#90ffc0", "#0a1a30"] },
+  ],
 };
 
 const PERIOD = 40;

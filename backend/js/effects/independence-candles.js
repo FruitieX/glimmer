@@ -13,6 +13,12 @@ export const meta = {
     night: { type: "number", label: "Night brightness", min: 0, max: 1, step: 0.01, default: 0.35 },
     snow: { type: "number", label: "Snowfall", min: 0, max: 1, step: 0.01, default: 0.3 },
   },
+  looks: [
+    { name: "Many windows", params: { windows: 6 }, colors: ["#ffb040", "#fff4e8", "#08205a"] },
+    { name: "Snowy night", params: { snow: 0.8, night: 0.45 }, colors: ["#ffc060", "#f0f4ff", "#0e3080"] },
+    { name: "Still midnight", params: { flicker: 0.1, night: 0.2, snow: 0 }, colors: ["#ff9a30", "#fff0e0", "#040e30"] },
+    { name: "Neighbourhood", params: { windows: 12, flicker: 0.5 }, colors: ["#ffd070", "#ffffff", "#0a2468"] },
+  ],
 };
 
 const PERIOD = 40;

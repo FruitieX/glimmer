@@ -13,6 +13,12 @@ export const meta = {
     twist: { type: "number", label: "Spiral twist", min: -3, max: 3, step: 0.1, default: 0.6 },
     beam: { type: "number", label: "Beam", min: 0, max: 1, step: 0.05, default: 0.7 },
   },
+  looks: [
+    { name: "Radar", params: { speed: 4, twist: 0, beam: 0.9 }, colors: ["#00ff6a", "#00c8ff", "#a0ff00"] },
+    { name: "Pinwheel", params: { speed: 12, arms: 3, twist: 0, beam: 0.2 }, colors: ["#ff2a2a", "#ffd000", "#00a0ff"] },
+    { name: "Ember", params: { twist: -1.2, beam: 0.3 }, colors: ["#ff2a00", "#ffa000", "#ff006a"] },
+    { name: "Ocean", params: { speed: 5, arms: 2 }, colors: ["#0040ff", "#00e5ff", "#7a00ff"] },
+  ],
 };
 
 export function loop(params) {

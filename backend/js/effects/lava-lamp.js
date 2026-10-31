@@ -12,6 +12,12 @@ export const meta = {
     blobs: { type: "number", label: "Blobs", min: 2, max: 8, step: 1, default: 5 },
     size: { type: "number", label: "Blob size", min: 0.5, max: 2, step: 0.05, default: 1 },
   },
+  looks: [
+    { name: "Classic", params: { blobs: 4, size: 1.3 }, colors: ["#ff1040", "#ff6080", "#100030"] },
+    { name: "Ocean", params: { cycle: 60 }, colors: ["#0060ff", "#00f0d0", "#02082a"] },
+    { name: "Toxic", params: { blobs: 7, size: 0.8, cycle: 25 }, colors: ["#40ff20", "#e0ff40", "#1a0030"] },
+    { name: "Disco", params: { cycle: 20, blobs: 6 }, colors: ["#ff00c0", "#00c0ff", "#0a0020"] },
+  ],
 };
 
 export function loop(params) {

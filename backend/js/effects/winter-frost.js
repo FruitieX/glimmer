@@ -12,6 +12,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     frost: { type: "number", label: "Frost", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Glacier", params: { glints: 0.2, speed: 0.6, frost: 0.8 }, colors: ["#002a50", "#40e0ff", "#e0ffff"] },
+    { name: "Diamond dust", params: { glints: 0.8, speed: 1.5 }, colors: ["#081040", "#5a9aff", "#ffffff"] },
+    { name: "Violet frost", params: { frost: 0.5 }, colors: ["#1a0a50", "#a060ff", "#f8f0ff"] },
+    { name: "Sunrise frost", params: { glints: 0.5, speed: 0.8 }, colors: ["#2a0a40", "#ff80b0", "#fff4e0"] },
+  ],
 };
 
 const PERIOD = 32;

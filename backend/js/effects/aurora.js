@@ -11,6 +11,12 @@ export const meta = {
     intensity: { type: "number", label: "Intensity", min: 0.2, max: 1.5, step: 0.01, default: 1 },
     background: { type: "number", label: "Night sky", min: 0, max: 0.3, step: 0.01, default: 0.04 },
   },
+  looks: [
+    { name: "Emerald", params: { intensity: 1.2 }, colors: ["#20ff70", "#00c0a0"] },
+    { name: "Crimson", params: { speed: 0.15 }, colors: ["#ff3070", "#8020ff"] },
+    { name: "Ice", params: { background: 0.02 }, colors: ["#60e0ff", "#3050ff"] },
+    { name: "Storm", params: { speed: 0.6, intensity: 1.4 }, colors: ["#b0ff30", "#ff30c0"] },
+  ],
 };
 export function render(ctx) {
   const { n, x, y, out, colors, params, t } = ctx;

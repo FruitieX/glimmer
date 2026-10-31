@@ -13,6 +13,12 @@ export const meta = {
     glow: { type: "number", label: "Coal glow", min: 0, max: 1.5, step: 0.01, default: 0.9 },
     height: { type: "number", label: "Rise height", min: 0.2, max: 1, step: 0.01, default: 0.75 },
   },
+  looks: [
+    { name: "Bonfire", params: { embers: 32, speed: 0.35, height: 0.95 }, colors: ["#fff0a0", "#ff7000", "#b01800"] },
+    { name: "Dying", params: { embers: 6, speed: 0.1, glow: 0.7, height: 0.4 }, colors: ["#ffa040", "#ff3800", "#701000"] },
+    { name: "Witchfire", params: {}, colors: ["#d0ff80", "#30e040", "#0a5020"] },
+    { name: "Copper", params: { embers: 22 }, colors: ["#c0f0ff", "#20a0ff", "#2010a0"] },
+  ],
 };
 
 // Every ember rises a whole number of times per loop.

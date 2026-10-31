@@ -13,6 +13,12 @@ export const meta = {
     hold: { type: "number", label: "Show solution for", min: 0.5, max: 10, step: 0.5, default: 3, unit: "s" },
     brightness: { type: "number", label: "Brightness", min: 0.2, max: 1, step: 0.01, default: 0.8 },
   },
+  looks: [
+    { name: "Neon", params: { speed: 20 }, colors: ["#6a20e0", "#ff20c0", "#40ff40", "#020004"] },
+    { name: "Ember", params: { brightness: 0.9 }, colors: ["#c03000", "#ff8020", "#fff080", "#040100"] },
+    { name: "Glacier", params: { speed: 8, hold: 5 }, colors: ["#2060c0", "#60e0ff", "#ffffff", "#010308"] },
+    { name: "Forest", params: { speed: 30, hold: 1.5 }, colors: ["#10a040", "#a0ff30", "#ff6040", "#010401"] },
+  ],
 };
 
 // The maze lives on a pixel grid (cells at odd coordinates, walls between),

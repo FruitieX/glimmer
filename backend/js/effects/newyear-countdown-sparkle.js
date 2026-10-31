@@ -13,6 +13,12 @@ export const meta = {
     tempo: { type: "number", label: "Tempo", min: 0.5, max: 2, step: 0.01, default: 1 },
     sparkle: { type: "number", label: "Sparkles", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Silver", params: {}, colors: ["#e0ecff", "#a060ff", "#40e0ff", "#ffffff", "#020414"] },
+    { name: "Fiery", params: { tempo: 1.3, sparkle: 0.8 }, colors: ["#ff8a20", "#ff2040", "#ffd000", "#fff0d0", "#0a0204"] },
+    { name: "Neon", params: { sparkle: 0.9 }, colors: ["#ff40d0", "#40ff80", "#ffe020", "#ffffff", "#060114"] },
+    { name: "Calm", params: { tempo: 0.7, sparkle: 0.3 }, colors: ["#ffd030", "#ffb0c0", "#a0d0ff", "#fff8e8", "#030318"] },
+  ],
 };
 
 // Ten seconds of countdown, then ten of celebration.

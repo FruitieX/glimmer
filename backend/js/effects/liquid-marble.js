@@ -13,6 +13,12 @@ export const meta = {
     turbulence: { type: "number", label: "Turbulence", min: 0, max: 2, step: 0.05, default: 1 },
     veins: { type: "number", label: "Vein brightness", min: 0, max: 1, step: 0.05, default: 0.8 },
   },
+  looks: [
+    { name: "Carrara", params: { cycle: 90, veins: 1 }, colors: ["#102a60", "#6090ff", "#ffffff"] },
+    { name: "Malachite", params: { scale: 1.5, turbulence: 1.4 }, colors: ["#003a20", "#20d070", "#c0ffd0"] },
+    { name: "Lava", params: { cycle: 30, turbulence: 1.6 }, colors: ["#400800", "#ff4000", "#ffd060"] },
+    { name: "Amethyst", params: { scale: 0.7 }, colors: ["#200840", "#a040ff", "#ffc0f0"] },
+  ],
 };
 
 export function loop(params) {

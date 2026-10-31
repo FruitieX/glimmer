@@ -13,6 +13,13 @@ export const meta = {
     length: { type: "number", label: "Trail length", min: 2, max: 16, step: 0.5, default: 7 },
     flicker: { type: "number", label: "Glyph flicker", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Blue code", params: {}, colors: ["#e0f0ff", "#2080ff", "#000208"] },
+    { name: "Red alert", params: { speed: 12 }, colors: ["#ffe0d0", "#ff2010", "#070000"] },
+    { name: "Amber", params: {}, colors: ["#fff0c0", "#ffa000", "#050200"] },
+    { name: "Downpour", params: { speed: 15, density: 2.5, length: 4 }, colors: ["#e8ffe8", "#30ff60", "#000502"] },
+    { name: "Drizzle", params: { speed: 3, density: 0.5, length: 12, flicker: 0.2 }, colors: ["#f0e0ff", "#a040ff", "#040008"] },
+  ],
 };
 
 // Logical grid mapped onto the LEDs by position: one stream per LED column on

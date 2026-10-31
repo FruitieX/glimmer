@@ -7,6 +7,12 @@ export const meta = {
     breathe: { type: "number", label: "Breathing", min: 0, max: 1, step: 0.01, default: 0 },
     period: { type: "number", label: "Breath length (s)", min: 2, max: 20, step: 0.5, default: 6 },
   },
+  looks: [
+    { name: "Candle", params: { breathe: 0.3, period: 8 }, colors: ["#ff8a2a"] },
+    { name: "Ice", params: {}, colors: ["#a0e0ff"] },
+    { name: "Rose", params: { breathe: 0.5, period: 5 }, colors: ["#ff3a7a"] },
+    { name: "Lagoon", params: { breathe: 0.6, period: 12 }, colors: ["#00e0c0"] },
+  ],
 };
 export function loop(params) {
   return params.period;

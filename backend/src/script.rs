@@ -56,6 +56,107 @@ pub struct Meta {
     /// Whether the script exports `loop(params, colors)`, i.e. can repeat seamlessly.
     #[serde(default)]
     pub loops: bool,
+    /// Named looks the effect ships with. Entries that aren't even shaped
+    /// like a look are dropped here; [`Meta::look_problems`] checks the rest.
+    #[serde(default, deserialize_with = "lenient_looks")]
+    pub looks: Vec<EffectLook>,
+}
+
+/// A built-in look of an effect: a name, settings that differ from the
+/// defaults, and a colour per slot. Not a user preset.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct EffectLook {
+    pub name: String,
+    #[serde(default)]
+    pub params: serde_json::Map<String, serde_json::Value>,
+    /// `#rrggbb` per colour slot.
+    #[serde(default)]
+    pub colors: Vec<String>,
+}
+
+fn lenient_looks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<EffectLook>, D::Error> {
+    let raw = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(match raw {
+        Some(serde_json::Value::Array(items)) => items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect(),
+        _ => vec![],
+    })
+}
+
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+impl Meta {
+    /// What is wrong with each of `meta.looks`: settings the effect doesn't
+    /// have or values it doesn't allow, or the wrong number of colours.
+    pub fn look_problems(&self) -> Vec<String> {
+        let mut problems = vec![];
+        for (i, look) in self.looks.iter().enumerate() {
+            let at = format!("meta.looks[{i}] ({:?})", look.name);
+            if look.name.trim().is_empty() {
+                problems.push(format!("{at} has no name"));
+            }
+            if self.looks[..i].iter().any(|l| l.name == look.name) {
+                problems.push(format!("{at}: another look has the same name"));
+            }
+            for (key, value) in &look.params {
+                let Some(param) = self.params.get(key) else {
+                    problems.push(format!("{at}: there is no param {key:?}"));
+                    continue;
+                };
+                if let Some(problem) = param_problem(param, value) {
+                    problems.push(format!("{at}: {key} {problem}"));
+                }
+            }
+            if look.colors.len() != self.colors.len() {
+                problems.push(format!(
+                    "{at} has {} colours, but the effect has {} colour slots",
+                    look.colors.len(),
+                    self.colors.len()
+                ));
+            }
+            for c in &look.colors {
+                if !is_hex_color(c) {
+                    problems.push(format!("{at}: {c:?} is not a #rrggbb colour"));
+                }
+            }
+        }
+        problems
+    }
+}
+
+/// Why `value` doesn't suit the param declared as `param`, if it doesn't.
+fn param_problem(param: &serde_json::Value, value: &serde_json::Value) -> Option<String> {
+    match param.get("type").and_then(|t| t.as_str()).unwrap_or("") {
+        "number" => {
+            let Some(v) = value.as_f64() else {
+                return Some(format!("{value} is not a number"));
+            };
+            if let Some(min) = param.get("min").and_then(|m| m.as_f64())
+                && v < min
+            {
+                return Some(format!("{v} is below its min {min}"));
+            }
+            if let Some(max) = param.get("max").and_then(|m| m.as_f64())
+                && v > max
+            {
+                return Some(format!("{v} is above its max {max}"));
+            }
+            None
+        }
+        "boolean" => (!value.is_boolean()).then(|| format!("{value} is not true or false")),
+        "select" => {
+            let ok = param
+                .get("options")
+                .and_then(|o| o.as_array())
+                .is_some_and(|o| o.contains(value));
+            (!ok).then(|| format!("{value} is not one of its options"))
+        }
+        _ => None,
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -181,8 +282,30 @@ impl Scripts {
         Ok((host, f))
     }
 
-    /// Compiles a module under a unique `key` and returns what it declares.
+    /// Compiles a module under a unique `key` and returns what it declares,
+    /// leaving out looks that don't fit its params and colour slots.
     pub fn register(&self, key: &str, source: &str) -> Result<Meta, String> {
+        let mut meta = self.register_all(key, source)?;
+        let looks = std::mem::take(&mut meta.looks);
+        for look in looks {
+            let alone = Meta {
+                looks: vec![look],
+                ..meta.clone()
+            };
+            if alone.look_problems().is_empty() {
+                meta.looks.extend(alone.looks);
+            }
+        }
+        for look in &mut meta.looks {
+            for c in &mut look.colors {
+                *c = c.to_ascii_lowercase();
+            }
+        }
+        Ok(meta)
+    }
+
+    /// [`Scripts::register`], keeping every look.
+    fn register_all(&self, key: &str, source: &str) -> Result<Meta, String> {
         let json: String = self.run(|ctx| {
             let (module, promise) =
                 Module::declare(ctx.clone(), format!("script:{key}"), source)?.eval()?;
@@ -340,7 +463,16 @@ impl Scripts {
     /// on a small grid, and reports what it declares and how long a frame took.
     pub fn check(source: &str, transition: bool) -> Result<(Meta, Duration), String> {
         let scripts = Scripts::new()?;
-        let meta = scripts.register("check", source)?;
+        let mut meta = scripts.register_all("check", source)?;
+        let problems = meta.look_problems();
+        if !problems.is_empty() {
+            return Err(problems.join("; "));
+        }
+        for look in &mut meta.looks {
+            for c in &mut look.colors {
+                *c = c.to_ascii_lowercase();
+            }
+        }
         let points: Vec<[f32; 3]> = (0..210)
             .map(|i| [(i / 21) as f32 / 9.0, (i % 21) as f32 / 20.0, 0.0])
             .collect();
@@ -449,6 +581,109 @@ mod tests {
             // Debug builds on shared CI machines run several times slower.
             let limit = Duration::from_millis(if cfg!(debug_assertions) { 60 } else { 20 });
             assert!(took < limit, "{name} took {took:?}");
+        }
+    }
+
+    #[test]
+    fn looks_must_fit_the_params_and_colour_slots() {
+        let source = |looks: &str| {
+            format!(
+                r##"export const meta = {{
+                    name: "Looks",
+                    params: {{
+                        speed: {{ type: "number", min: 0, max: 2, default: 1 }},
+                        mirror: {{ type: "boolean", default: false }},
+                        axis: {{ type: "select", options: ["x", "y"], default: "x" }},
+                    }},
+                    colors: [{{ id: "a", default: "#ff0000" }}, {{ id: "b", default: "#0000ff" }}],
+                    looks: {looks},
+                }};
+                export function render(ctx) {{}}"##
+            )
+        };
+        let good = r##"[{ name: "Ice", params: { speed: 0.5, axis: "y" }, colors: ["#AABBFF", "#ffffff"] }]"##;
+        let (meta, _) = Scripts::check(&source(good), false).unwrap();
+        assert_eq!(meta.looks.len(), 1);
+        assert_eq!(meta.looks[0].colors, vec!["#aabbff", "#ffffff"]);
+        for (bad, why) in [
+            (
+                r##"[{ name: "A", params: { pace: 1 }, colors: ["#000000", "#000000"] }]"##,
+                "no param",
+            ),
+            (
+                r##"[{ name: "A", params: { speed: 3 }, colors: ["#000000", "#000000"] }]"##,
+                "above its max",
+            ),
+            (
+                r##"[{ name: "A", params: { axis: "z" }, colors: ["#000000", "#000000"] }]"##,
+                "options",
+            ),
+            (
+                r##"[{ name: "A", params: { mirror: 1 }, colors: ["#000000", "#000000"] }]"##,
+                "true or false",
+            ),
+            (r##"[{ name: "A", colors: ["#000000"] }]"##, "colour slots"),
+            (
+                r##"[{ name: "A", colors: ["red", "#000000"] }]"##,
+                "#rrggbb",
+            ),
+            (
+                r##"[{ name: "A", colors: ["#000000", "#000000"] }, { name: "A", colors: ["#000000", "#000000"] }]"##,
+                "same name",
+            ),
+        ] {
+            let err = Scripts::check(&source(bad), false).unwrap_err();
+            assert!(err.contains(why), "{bad}: {err}");
+        }
+        // Running effects keep the looks that fit and drop the rest, also
+        // ones that aren't shaped like looks at all.
+        let s = scripts();
+        let mixed = format!(
+            r##"[{good_one}, {{ name: "Bad", params: {{ speed: 9 }}, colors: ["#000000", "#000000"] }}, 7]"##,
+            good_one = &good[1..good.len() - 1]
+        );
+        let meta = s.register("m", &source(&mixed)).unwrap();
+        let names: Vec<&str> = meta.looks.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["Ice"]);
+        let meta = s.register("n", &source("\"nope\"")).unwrap();
+        assert!(meta.looks.is_empty());
+        assert_eq!(meta.colors.len(), 2);
+    }
+
+    #[test]
+    fn builtin_effects_have_looks() {
+        // Effects without colours or settings worth varying.
+        const WITHOUT: &[&str] = &[];
+        for (name, source, _) in crate::builtin::all().filter(|(_, _, t)| !*t) {
+            let (meta, _) = Scripts::check(source, false).unwrap_or_else(|e| panic!("{name}: {e}"));
+            if WITHOUT.contains(&name) {
+                continue;
+            }
+            assert!(
+                (3..=5).contains(&meta.looks.len()),
+                "{name} has {} looks",
+                meta.looks.len()
+            );
+            for look in &meta.looks {
+                assert_ne!(
+                    look.name, "Default",
+                    "{name}: the defaults are already Default"
+                );
+                let defaults: Vec<String> = meta
+                    .colors
+                    .iter()
+                    .map(|c| c.default.to_ascii_lowercase())
+                    .collect();
+                let same_params = look
+                    .params
+                    .iter()
+                    .all(|(k, v)| meta.params.get(k).and_then(|p| p.get("default")) == Some(v));
+                assert!(
+                    !(same_params && look.colors == defaults),
+                    "{name}: {} is just the defaults",
+                    look.name
+                );
+            }
         }
     }
 

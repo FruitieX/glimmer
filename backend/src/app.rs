@@ -55,6 +55,11 @@ pub struct StatePatch {
     pub script_id: Option<String>,
     /// Merged into the look's params.
     pub params: Option<serde_json::Map<String, Value>>,
+    /// `params` replace the look's params instead (absent: back to the
+    /// defaults), as when picking one of an effect's built-in looks. Unlike
+    /// `look`, this keeps a playing playlist going.
+    #[serde(default)]
+    pub replace_params: bool,
     /// `#rrggbb` per colour slot.
     pub colors: Option<Vec<String>>,
     /// Replaces the first colour slot.
@@ -742,6 +747,10 @@ impl App {
                 // Picking the effect a playlist shows keeps it, without the playlist.
                 state.playlist_id = None;
             }
+            if patch.replace_params {
+                state.look.params = Value::Object(Default::default());
+                state.preset_id = None;
+            }
             if let Some(params) = &patch.params {
                 if !state.look.params.is_object() {
                     state.look.params = Value::Object(Default::default());
@@ -990,6 +999,25 @@ mod tests {
         assert!(set(&app, json!({"preset": "Nothing like it"})).is_err());
         app.playlist_deleted("everyday").unwrap();
         assert_ne!(state(&app).playlist_id.as_deref(), Some("everyday"));
+    }
+
+    #[test]
+    fn built_in_looks_replace_params_and_keep_the_playlist() {
+        let (_dir, app) = app();
+        set(&app, json!({"playlist": "calm", "power": true})).unwrap();
+        // A tweak merges; picking a look replaces every param.
+        set(&app, json!({"params": {"speed": 1.5, "height": 0.9}})).unwrap();
+        let s = set(
+            &app,
+            json!({"params": {"speed": 0.4}, "replaceParams": true, "colors": ["#ff0000", "#00ff00"]}),
+        )
+        .unwrap();
+        assert_eq!(s.look.params, json!({"speed": 0.4}));
+        assert_eq!(s.look.colors, vec!["#ff0000", "#00ff00"]);
+        assert_eq!(s.playlist_id.as_deref(), Some("calm"));
+        // Without params it goes back to the defaults.
+        let s = set(&app, json!({"replaceParams": true})).unwrap();
+        assert_eq!(s.look.params, json!({}));
     }
 
     #[test]

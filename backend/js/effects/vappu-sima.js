@@ -13,6 +13,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     raisins: { type: "number", label: "Raisins", min: 0, max: 4, step: 1, default: 3 },
   },
+  looks: [
+    { name: "Lime fizz", params: { fizz: 0.9, speed: 1.4 }, colors: ["#a0ff00", "#e8ff80", "#f8ffe8", "#1a0a04"] },
+    { name: "Dark sima", params: { fizz: 0.4, speed: 0.7 }, colors: ["#ff7a00", "#ffc040", "#fff0d0", "#280804"] },
+    { name: "Still", params: { fizz: 0.2, speed: 0.4, raisins: 1 }, colors: ["#ffc400", "#fff4b0", "#ffffff", "#3a1206"] },
+    { name: "Pink sima", params: { raisins: 2 }, colors: ["#ff4a6a", "#ffa0b0", "#fff0f4", "#300614"] },
+  ],
 };
 
 const PERIOD = 30;

@@ -13,6 +13,12 @@ export const meta = {
     size: { type: "number", label: "Size", min: 0.1, max: 0.4, step: 0.01, default: 0.2 },
     night: { type: "number", label: "Night brightness", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Phantoms", params: { count: 6, speed: 1.4, size: 0.15 }, colors: ["#e8f8ff", "#a060ff", "#120424"] },
+    { name: "Will-o'-wisp", params: { count: 3, speed: 0.6, size: 0.25 }, colors: ["#c8ffd8", "#40ff60", "#04140a"] },
+    { name: "Pumpkin night", params: { night: 0.8 }, colors: ["#fff0d8", "#ff8a10", "#200818"] },
+    { name: "Spectral", params: { count: 2, speed: 0.4, size: 0.35, night: 0.4 }, colors: ["#d0e0ff", "#40b0ff", "#020820"] },
+  ],
 };
 
 const PERIOD = 30;

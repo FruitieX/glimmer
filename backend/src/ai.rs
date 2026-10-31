@@ -75,7 +75,7 @@ impl Ai {
             "You write lighting scripts for Twinkly LED strings (curtains, strings and trees of a few hundred LEDs, \
              viewed from a few metres away in a home). Write {what} as a single JavaScript module that follows the guide \
              below exactly. It runs in QuickJS with only the documented globals. Make it look beautiful on real LEDs: \
-             smooth motion, rich but not garish colour, sensible defaults, and parameters with friendly labels. \
+             smooth motion, rich but not garish colour, sensible defaults, parameters with friendly labels and, for effects, 3–4 looks. \
              Don't use tools or write files: reply with only a JSON object {{\"source\": <the complete module>, \"summary\": <one or two plain sentences for the person>}}.\n\n\
              <guide>\n{GUIDE}\n</guide>\n\n<example>\n{example}\n</example>"
         )

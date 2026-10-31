@@ -19,6 +19,13 @@ export const meta = {
     start: { type: "select", label: "Start", options: ["single", "random"], labels: ["Single cell", "Random"], default: "single" },
     brightness: { type: "number", label: "Brightness", min: 0.2, max: 1, step: 0.01, default: 0.75 },
   },
+  looks: [
+    { name: "Rule 110", params: { rule: "110" }, colors: ["#60ffd0", "#2040ff", "#02040a"] },
+    { name: "Sierpinski", params: { rule: "90" }, colors: ["#ffffff", "#ff2080", "#04020a"] },
+    { name: "Ember", params: { start: "random" }, colors: ["#ffe060", "#ff2000", "#060100"] },
+    { name: "Highway", params: { rule: "184", speed: 8, start: "random" }, colors: ["#40ff80", "#20a0ff", "#000000"] },
+    { name: "Rule 150", params: { rule: "150", speed: 2 }, colors: ["#c080ff", "#ff40a0", "#050210"] },
+  ],
 };
 
 // Logical grid mapped onto the LEDs by position. On a curtain, new

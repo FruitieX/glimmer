@@ -11,6 +11,12 @@ export const meta = {
     speed: { type: "number", label: "Twinkle speed", min: 0.05, max: 3, step: 0.01, default: 0.6 },
     base: { type: "number", label: "Base brightness", min: 0, max: 1, step: 0.01, default: 0.35 },
   },
+  looks: [
+    { name: "Midnight", params: { density: 0.25, base: 0.2 }, colors: ["#060a30", "#ffffff"] },
+    { name: "Candlelight", params: {}, colors: ["#6a2000", "#ffe0a0"] },
+    { name: "Frost", params: { density: 0.5, speed: 1.2 }, colors: ["#003a6a", "#e0f8ff"] },
+    { name: "Disco", params: { density: 0.6, speed: 2 }, colors: ["#2a006a", "#00ffe0"] },
+  ],
 };
 export function loop(params) {
   return 16 / params.speed;

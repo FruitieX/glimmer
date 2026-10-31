@@ -13,6 +13,12 @@ export const meta = {
     glow: { type: "number", label: "Glow size", min: 0.2, max: 1.5, step: 0.01, default: 0.75 },
     shadows: { type: "number", label: "Shadows", min: 0, max: 1, step: 0.01, default: 0.5 },
   },
+  looks: [
+    { name: "Grinning", params: { flicker: 0.8, speed: 1.4, glow: 1.2, shadows: 0.2 }, colors: ["#fff080", "#ff8a00", "#300a40"] },
+    { name: "Embers", params: { flicker: 0.3, speed: 0.6, glow: 0.5 }, colors: ["#ff9a30", "#d02000", "#200418"] },
+    { name: "Ghostfire", params: { glow: 1 }, colors: ["#d0ff70", "#30e020", "#14063a"] },
+    { name: "Haunted", params: { flicker: 0.9, glow: 1.1, shadows: 0.6 }, colors: ["#ffc0ff", "#b030ff", "#06021a"] },
+  ],
 };
 
 const PERIOD = 24;

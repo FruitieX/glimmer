@@ -13,6 +13,12 @@ export const meta = {
     speed: { type: "number", label: "Speed", min: 0.1, max: 3, step: 0.01, default: 1 },
     sheen: { type: "number", label: "Sheen", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "All gold", params: { density: 0.7 }, colors: ["#ffc040", "#fff0b0", "#a03000", "#0a0300"] },
+    { name: "Silver frost", params: { speed: 0.6 }, colors: ["#d0e0ff", "#ffffff", "#1a3a8a", "#020818"] },
+    { name: "Rose gold", params: { sheen: 0.8 }, colors: ["#ffb080", "#ffd8e8", "#7a2050", "#0c0210"] },
+    { name: "Party", params: { density: 0.9, speed: 1.8 }, colors: ["#ffd040", "#e8f0ff", "#8020a0", "#060216"] },
+  ],
 };
 
 const PERIOD = 30;

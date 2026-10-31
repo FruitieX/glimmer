@@ -13,6 +13,12 @@ export const meta = {
     softness: { type: "number", label: "Edge softness", min: 0.02, max: 0.5, step: 0.01, default: 0.12 },
     depth: { type: "number", label: "Centre shading", min: 0, max: 1, step: 0.05, default: 0.4 },
   },
+  looks: [
+    { name: "Ocean", params: { pulse: 7 }, colors: ["#00e5ff", "#0050ff", "#00ffb0"] },
+    { name: "Ember", params: { pulse: 3, rim: 0.8 }, colors: ["#ffb000", "#ff3c00", "#c0003a"] },
+    { name: "Pastel", params: { pulse: 8, softness: 0.3, depth: 0.2 }, colors: ["#ffb3d9", "#b8a6ff", "#9fefff"] },
+    { name: "Neon", params: { pulse: 2, softness: 0.06, rim: 0.9 }, colors: ["#ff00c8", "#00ff6a", "#ffee00"] },
+  ],
 };
 
 export function loop(params, colors) {

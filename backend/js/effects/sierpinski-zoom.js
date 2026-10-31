@@ -13,6 +13,12 @@ export const meta = {
     speed: { type: "number", label: "Zoom speed", min: 0.02, max: 0.5, step: 0.01, default: 0.12 },
     glow: { type: "number", label: "Lattice brightness", min: 0, max: 1, step: 0.01, default: 0.65 },
   },
+  looks: [
+    { name: "Ice carpet", params: { shape: "carpet", glow: 1 }, colors: ["#20a0ff", "#e0f8ff", "#6040ff", "#020612"] },
+    { name: "Neon", params: { speed: 0.25 }, colors: ["#00ff9c", "#a000ff", "#ff0080", "#030008"] },
+    { name: "Ember", params: { glow: 0.8 }, colors: ["#ffd060", "#c01000", "#ff6a00", "#0a0200"] },
+    { name: "Jade", params: { shape: "carpet", speed: 0.06, glow: 1 }, colors: ["#00ff80", "#00a0ff", "#c0ff40", "#010604"] },
+  ],
 };
 
 // One loop zooms in by the shape's own scale factor (2 or 3), after which

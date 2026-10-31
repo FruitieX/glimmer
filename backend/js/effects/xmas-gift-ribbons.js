@@ -14,6 +14,12 @@ export const meta = {
     size: { type: "number", label: "Gift size", min: 8, max: 40, step: 1, unit: "LEDs", default: 16 },
     shimmer: { type: "number", label: "Shimmer", min: 0, max: 1, step: 0.01, default: 0.6 },
   },
+  looks: [
+    { name: "Silver bows", params: { shimmer: 0.8 }, colors: ["#e00a3a", "#1040c0", "#08a0a0", "#e0ecff", "#040414"] },
+    { name: "Candy wrap", params: { speed: 1.4, size: 12 }, colors: ["#ff2a8a", "#ffa000", "#a040ff", "#ffffff", "#0a0414"] },
+    { name: "Royal", params: { speed: 0.6, size: 24 }, colors: ["#6010c0", "#c00a30", "#0a6a40", "#ffd040", "#06020e"] },
+    { name: "Red & gold", params: { shimmer: 0.4 }, colors: ["#ff1020", "#c00010", "#ff6000", "#ffd040", "#080206"] },
+  ],
 };
 
 const PERIOD = 36;

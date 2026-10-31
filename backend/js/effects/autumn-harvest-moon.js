@@ -13,6 +13,12 @@ export const meta = {
     clouds: { type: "number", label: "Clouds", min: 0, max: 1, step: 0.01, default: 0.5 },
     size: { type: "number", label: "Moon size", min: 0.15, max: 0.4, step: 0.01, default: 0.26 },
   },
+  looks: [
+    { name: "Blood moon", params: { size: 0.32 }, colors: ["#ff4a20", "#12040e", "#6a2a3a", "#030102"] },
+    { name: "Silver moon", params: { clouds: 0.3 }, colors: ["#fff0d0", "#040a24", "#4a5a7a", "#010203"] },
+    { name: "Misty", params: { speed: 0.4, clouds: 0.85 }, colors: ["#ffc060", "#0c0a20", "#6a5a80", "#020403"] },
+    { name: "Golden", params: { clouds: 0.2, size: 0.36 }, colors: ["#ffc020", "#100a20", "#5a4060", "#020302"] },
+  ],
 };
 
 const PERIOD = 60;

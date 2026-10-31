@@ -14,6 +14,12 @@ export const meta = {
     ripples: { type: "number", label: "Ripples", min: 0, max: 1, step: 0.01, default: 0.5 },
     brightness: { type: "number", label: "Brightness", min: 0.2, max: 1, step: 0.01, default: 0.85 },
   },
+  looks: [
+    { name: "Golden", params: { brightness: 1 }, colors: ["#ffe070", "#ffa030", "#ffa040", "#4a60b0"] },
+    { name: "Rose dusk", params: { trees: 0.4 }, colors: ["#ffb080", "#ff5a7a", "#c060c0", "#5040a0"] },
+    { name: "Still lake", params: { speed: 0.4, ripples: 0.15 }, colors: ["#fff0a0", "#ff9a50", "#6a90ff", "#2050c0"] },
+    { name: "Light night", params: { brightness: 0.7, ripples: 0.7 }, colors: ["#ffd0a0", "#ff80c0", "#8a70ff", "#2a3a90"] },
+  ],
 };
 
 const PERIOD = 60;

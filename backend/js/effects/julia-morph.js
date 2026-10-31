@@ -14,6 +14,12 @@ export const meta = {
     radius: { type: "number", label: "Shape", min: 0.6, max: 0.85, step: 0.005, default: 0.7885 },
     detail: { type: "number", label: "Detail", min: 16, max: 64, step: 1, default: 40 },
   },
+  looks: [
+    { name: "Fire", params: {}, colors: ["#ff3000", "#ffa000", "#ffffa0", "#0a0200"] },
+    { name: "Ice", params: { zoom: 1.6, cycle: 50 }, colors: ["#2040ff", "#40c0ff", "#e0ffff", "#01030c"] },
+    { name: "Neon", params: { cycle: 15, detail: 56 }, colors: ["#ff00a0", "#a000ff", "#00ffd0", "#05000a"] },
+    { name: "Jungle", params: { radius: 0.75, zoom: 1 }, colors: ["#00c060", "#60ff40", "#f0ff60", "#010802"] },
+  ],
 };
 
 export function loop(params) {

@@ -12,6 +12,12 @@ export const meta = {
     sparkle: { type: "number", label: "Glitter", min: 0, max: 1, step: 0.01, default: 0.6 },
     strand: { type: "number", label: "Strand length", min: 3, max: 30, step: 1, unit: "LEDs", default: 10 },
   },
+  looks: [
+    { name: "All gold", params: { sparkle: 0.8 }, colors: ["#ffb020", "#ffe080", "#ff7a00"] },
+    { name: "Icy", params: { speed: 0.7 }, colors: ["#a0d0ff", "#ffffff", "#2060ff"] },
+    { name: "Party", params: { speed: 1.8, strand: 6 }, colors: ["#ff20a0", "#20e0ff", "#a040ff"] },
+    { name: "Long swish", params: { speed: 0.6, strand: 22, sparkle: 0.4 }, colors: ["#ffb830", "#d8e4ff", "#10c040"] },
+  ],
 };
 
 const PERIOD = 20;

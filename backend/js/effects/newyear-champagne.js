@@ -13,6 +13,12 @@ export const meta = {
     sparkle: { type: "number", label: "Sparkle", min: 0, max: 1, step: 0.01, default: 0.4 },
     glow: { type: "number", label: "Glow", min: 0, max: 1, step: 0.01, default: 0.55 },
   },
+  looks: [
+    { name: "Rosé", params: {}, colors: ["#e04070", "#ffd0e0", "#fff0f8"] },
+    { name: "Fizzy", params: { bubbles: 32, speed: 1.6, sparkle: 0.7 }, colors: ["#e0a020", "#fff8d8", "#ffffff"] },
+    { name: "Blanc", params: { bubbles: 8, speed: 0.6, glow: 0.4 }, colors: ["#f0d050", "#ffffe0", "#e0f0ff"] },
+    { name: "Golden", params: { glow: 0.85, sparkle: 0.6 }, colors: ["#ffb020", "#fff0b0", "#fff8d0"] },
+  ],
 };
 
 const PERIOD = 30;

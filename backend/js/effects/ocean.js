@@ -12,6 +12,12 @@ export const meta = {
     size: { type: "number", label: "Wave size", min: 0.3, max: 3, step: 0.05, default: 0.8 },
     foam: { type: "number", label: "Foam", min: 0, max: 1, step: 0.05, default: 0.8 },
   },
+  looks: [
+    { name: "Tropical", params: { speed: 0.08 }, colors: ["#006a80", "#20ffd0", "#f0fff8"] },
+    { name: "Storm", params: { speed: 0.25, size: 1.6, foam: 1 }, colors: ["#0a1a50", "#2a70c0", "#ffffff"] },
+    { name: "Calm bay", params: { speed: 0.05, size: 0.5, foam: 0.3 }, colors: ["#021a60", "#1090e0", "#c0f0ff"] },
+    { name: "Sunset sea", params: {}, colors: ["#200a60", "#ff6a40", "#ffe0b0"] },
+  ],
 };
 
 export function loop(params) {

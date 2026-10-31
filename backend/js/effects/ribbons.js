@@ -20,6 +20,12 @@ export const meta = {
       default: "horizontal",
     },
   },
+  looks: [
+    { name: "Aurora", params: { speed: 0.05, width: 0.14 }, colors: ["#00ff88", "#00c8ff", "#a040ff", "#020812"] },
+    { name: "Fiesta", params: { speed: 0.2, waviness: 0.9 }, colors: ["#ff2a2a", "#ffd000", "#00d0ff", "#06020a"] },
+    { name: "Sunset", params: { width: 0.12, waviness: 0.4 }, colors: ["#ff6a00", "#ff2a6a", "#ffc040", "#100308"] },
+    { name: "Ocean", params: { direction: "vertical" }, colors: ["#0060ff", "#00e5ff", "#00ffb0", "#010614"] },
+  ],
 };
 
 export function loop(params) {

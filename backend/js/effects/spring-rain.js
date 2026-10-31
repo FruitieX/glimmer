@@ -14,6 +14,12 @@ export const meta = {
     wind: { type: "number", label: "Slant", min: -1, max: 1, step: 0.01, default: 0.2 },
     background: { type: "number", label: "Background", min: 0, max: 1, step: 0.01, default: 0.45 },
   },
+  looks: [
+    { name: "Drizzle", params: { drops: 6, speed: 0.6, wind: 0 }, colors: ["#b0dcff", "#e8fbff", "#3aa850", "#2a4a7a"] },
+    { name: "Downpour", params: { drops: 34, speed: 1.6, wind: 0.5, background: 0.3 }, colors: ["#c8e6ff", "#ffffff", "#227a3a", "#0a1630"] },
+    { name: "Sunshower", params: { background: 0.55 }, colors: ["#ffe8a0", "#ffffff", "#5ac850", "#4a9ae8"] },
+    { name: "Dusk", params: {}, colors: ["#a0a8ff", "#e0d8ff", "#1e6a40", "#2a1a5a"] },
+  ],
 };
 
 const PERIOD = 24;

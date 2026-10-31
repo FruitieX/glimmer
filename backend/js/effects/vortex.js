@@ -13,6 +13,12 @@ export const meta = {
     twist: { type: "number", label: "Twist", min: 0, max: 8, step: 0.25, default: 2 },
     reverse: { type: "boolean", label: "Reverse", default: false },
   },
+  looks: [
+    { name: "Inferno", params: { speed: 0.25, twist: 3 }, colors: ["#a01000", "#ff5a00", "#ffe080"] },
+    { name: "Deep sea", params: { speed: 0.1, arms: 2 }, colors: ["#0020a0", "#00a0c0", "#a0fff0"] },
+    { name: "Toxic", params: { arms: 5, twist: 4.5, reverse: true }, colors: ["#006a10", "#40ff20", "#e8ff80"] },
+    { name: "Candy", params: { speed: 0.3, arms: 4 }, colors: ["#ff0080", "#ff80c0", "#fff0f8"] },
+  ],
 };
 
 export function loop(params) {

@@ -13,6 +13,12 @@ export const meta = {
     skill: { type: "number", label: "Player skill", min: 0, max: 1, step: 0.01, default: 0.85 },
     brightness: { type: "number", label: "Brightness", min: 0.2, max: 1, step: 0.01, default: 0.75 },
   },
+  looks: [
+    { name: "Classic", params: { brightness: 1 }, colors: ["#ff2020", "#ffe000", "#20a0ff", "#000000"] },
+    { name: "Neon", params: { speed: 9, brightness: 1 }, colors: ["#ff00d0", "#00ff90", "#a040ff", "#04000a"] },
+    { name: "Ocean", params: {}, colors: ["#00e0ff", "#2060ff", "#40ffc0", "#000610"] },
+    { name: "Novice", params: { speed: 3, skill: 0.3, brightness: 0.9 }, colors: ["#ff7020", "#ffc020", "#ff3080", "#08020a"] },
+  ],
 };
 
 const SHAPES = [
