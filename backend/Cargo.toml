@@ -8,6 +8,8 @@ publish = false
 [dependencies]
 axum = { version = "0.8.9", features = ["ws", "macros"] }
 base64 = "0.23.1"
+chrono = { version = "0.4.45", default-features = false, features = ["std", "now"] }
+chrono-tz = "0.10.4"
 futures-util = "0.3.34"
 image = { version = "0.25.10", default-features = false, features = ["gif", "png", "jpeg"] }
 rand = "0.10.3"

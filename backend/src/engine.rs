@@ -1148,6 +1148,7 @@ impl Worker {
                     let only_brightness = draft.is_none()
                         && f.state.power == state.power
                         && f.state.look == state.look
+                        && f.state.playlist_id == state.playlist_id
                         && f.fade.is_none();
                     if only_brightness && self.adjust_movie_brightness(idx, state.brightness) {
                         self.fixtures[idx].state = state;
@@ -1256,6 +1257,11 @@ impl Worker {
             }
             if !f.state.power {
                 continue;
+            }
+            // A playlist changes the look every few minutes: a movie per entry
+            // would wear the string's flash and stall each change on an upload.
+            if f.state.playlist_id.is_some() {
+                return;
             }
             let Some(loop_s) = f.layer.as_ref().and_then(|l| l.loop_s) else {
                 return;

@@ -170,6 +170,78 @@ try {
     20000,
   );
 
+  // Playlists: two short entries take turns, streamed live even though the
+  // string prefers movies (no movie per entry).
+  const created = await page.request.post(`${origin}/api/playlists`, {
+    headers: { Origin: origin },
+    data: {
+      name: "Test loop",
+      shuffle: false,
+      entries: [
+        { scriptId: "rainbow", durationS: 2 },
+        { scriptId: "plasma", durationS: 2 },
+      ],
+    },
+  });
+  assert.ok(
+    created.ok(),
+    `playlist: ${created.status()} ${await created.text()}`,
+  );
+  const playlist = await created.json();
+  const fixtureUrl = `${origin}/api/fixtures/${encodeURIComponent("Test curtain")}`;
+  const picked = await page.request.post(`${fixtureUrl}/state`, {
+    headers: { Origin: origin },
+    data: { playlist: playlist.id, power: true },
+  });
+  assert.ok(picked.ok(), `pick playlist: ${await picked.text()}`);
+  assert.equal((await picked.json()).look.scriptId, "rainbow");
+  const light = async () =>
+    (await (await page.request.get(`${origin}/api/state`)).json()).fixtures[0];
+  await until("live frames for the playlist", () => fake.state.mode === "rt");
+  const framesBefore = fake.state.frames;
+  await until("the next entry", async () => {
+    const l = await light();
+    return l.state.look.scriptId === "plasma" && l.playing?.entry === 1;
+  });
+  await until(
+    "the first entry again",
+    async () => (await light()).state.look.scriptId === "rainbow",
+  );
+  assert.equal((await light()).state.playlistId, playlist.id);
+  assert.ok(fake.state.frames > framesBefore + 50, "the playlist streams");
+  assert.equal(fake.state.mode, "rt", "still live");
+  assert.equal(fake.state.movies.length, 1, "no movie uploaded per entry");
+  const status = (await (await page.request.get(`${origin}/api/state`)).json())
+    .status[device.id];
+  assert.equal(status.output, "live");
+
+  await page.goto(`${origin}/lights/Test%20curtain`);
+  await page.getByText("Test loop").first().waitFor();
+  await page.getByRole("button", { name: /^Playlists/ }).click();
+  await page.getByRole("button", { name: /^Halloween/ }).waitFor();
+  await delay(1500);
+  await page.screenshot({
+    path: `${shots}/light-playlist.png`,
+    fullPage: true,
+  });
+  await page.goto(`${origin}/playlists`);
+  await page.getByRole("button", { name: /^Christmas/ }).waitFor();
+  await delay(1500);
+  await page.screenshot({ path: `${shots}/playlists.png`, fullPage: true });
+  await page.getByRole("button", { name: /^Test loop/ }).click();
+  await page.getByRole("dialog").getByText("Rainbow").waitFor();
+  await page.getByRole("button", { name: "Add effect" }).click();
+  await delay(1500);
+  await page.screenshot({ path: `${shots}/playlist-editor.png` });
+  await page.keyboard.press("Escape");
+
+  // Picking an effect ends the playlist.
+  const effect = await page.request.post(`${fixtureUrl}/state`, {
+    headers: { Origin: origin },
+    data: { scriptId: "rainbow" },
+  });
+  assert.equal((await effect.json()).playlistId, null);
+
   // Turning off fades out live and switches the string off.
   await page.goto(origin);
   await page.getByRole("switch", { name: "Test curtain power" }).click();
@@ -181,10 +253,25 @@ try {
   await page.goto(`${origin}/lights/Test%20curtain`);
   await page.getByText("Rainbow settings").waitFor();
   await page.screenshot({ path: `${shots}/light-phone.png`, fullPage: true });
+  await page
+    .getByRole("heading", { name: "Effect", exact: true })
+    .evaluate((h) => h.scrollIntoView({ block: "center" }));
+  await page.screenshot({ path: `${shots}/light-phone-effects.png` });
   await page.goto(`${origin}/effects/snowfall`);
   await page.getByText("Try settings").waitFor();
   await page.getByRole("button", { name: "View the code" }).waitFor();
   await page.screenshot({ path: `${shots}/editor-phone.png`, fullPage: true });
+  await page.goto(`${origin}/playlists`);
+  await page.getByRole("button", { name: /^Christmas/ }).waitFor();
+  await delay(1500);
+  await page.screenshot({ path: `${shots}/playlists-phone.png` });
+  await page.getByRole("button", { name: /^Christmas/ }).click();
+  await page.getByRole("dialog").getByText("Start by itself").waitFor();
+  await delay(800);
+  await page.screenshot({ path: `${shots}/playlist-editor-phone.png` });
+  await page.getByRole("dialog").evaluate((d) => d.scrollTo(0, d.scrollHeight));
+  await page.screenshot({ path: `${shots}/playlist-editor-phone-2.png` });
+  await page.keyboard.press("Escape");
   // Installed from the browser, the app opens in its own window.
   const manifest = await page.request.get(`${origin}/manifest.webmanifest`);
   assert.equal((await manifest.json()).display, "standalone");
@@ -215,7 +302,7 @@ try {
 
   assert.deepEqual(errors, [], "no browser errors");
   console.log(
-    "UI checks passed: add string, stream, effects, presets, editor preview, new script, movie upload, power off.",
+    "UI checks passed: add string, stream, effects, presets, editor preview, new script, movie upload, playlists, power off.",
   );
 } catch (e) {
   failed = true;

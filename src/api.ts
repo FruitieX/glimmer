@@ -119,11 +119,63 @@ export interface Look {
   colors: string[];
 }
 
+export interface Selection {
+  look: Look;
+  presetId: string | null;
+  playlistId: string | null;
+  scheduled: Scheduled | null;
+}
+
+/** A playlist its season put on, and what comes back when it ends. */
+export interface Scheduled {
+  playlistId: string;
+  /** Last day, YYYY-MM-DD. */
+  until: string;
+  resume: Selection;
+}
+
 export interface FixtureState {
   power: boolean;
   brightness: number;
   look: Look;
   presetId: string | null;
+  playlistId: string | null;
+  scheduled: Scheduled | null;
+}
+
+export interface PlaylistEntry {
+  scriptId: string;
+  presetId: string | null;
+  params: Record<string, unknown>;
+  colors: string[];
+  durationS: number;
+  enabled: boolean;
+}
+
+/** MM-DD dates, or days around Easter Sunday or Midsummer Eve. */
+export type Season =
+  | { from: string; to: string }
+  | { easter: [number, number] }
+  | { midsummer: [number, number] };
+
+export interface Playlist {
+  id: string;
+  name: string;
+  entries: PlaylistEntry[];
+  shuffle: boolean;
+  season: Season | null;
+  autoEnabled: boolean;
+  lights: string[] | null;
+  builtin: boolean;
+  sort: number;
+}
+
+/** What a light's playlist is showing right now. */
+export interface Playing {
+  playlistId: string;
+  entry: number | null;
+  startedAt: number;
+  durationS: number;
 }
 
 export interface Preset {
@@ -157,8 +209,10 @@ export interface AppState {
     fixture: Fixture;
     state: FixtureState;
     layout: FixtureLayout | null;
+    playing: Playing | null;
   }[];
   presets: Preset[];
+  playlists: Playlist[];
   scripts: ScriptInfo[];
   status: Record<string, DeviceStatus>;
   ai: boolean;
@@ -232,4 +286,31 @@ export function colorValues(
 ) {
   const slots = meta?.colors ?? [];
   return slots.map((slot, i) => colors?.[i] ?? slot.default);
+}
+
+const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+
+/** "12-27" or "2026-12-27" as "27 Dec". */
+export function dayLabel(date: string) {
+  const [m, d] = date.split("-").slice(-2).map(Number);
+  return `${d} ${MONTHS[m - 1] ?? "?"}`;
+}
+
+function days(n: number) {
+  if (n === 0) return "";
+  return ` ${n < 0 ? "−" : "+"}${Math.abs(n)}`;
+}
+
+/** A season in words: "1 Dec – 27 Dec", "Easter −7 to +1 days". */
+export function seasonLabel(season: Season | null) {
+  if (!season) return "Any time";
+  if ("from" in season)
+    return `${dayLabel(season.from)} – ${dayLabel(season.to)}`;
+  const [name, [a, b]] =
+    "easter" in season
+      ? ["Easter", season.easter]
+      : ["Midsummer Eve", season.midsummer];
+  return a === b
+    ? `${name}${days(a)}`
+    : `${name}${days(a) || " +0"} to${days(b) || " +0"} days`;
 }

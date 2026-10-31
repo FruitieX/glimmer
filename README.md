@@ -5,6 +5,7 @@ Live animations for [Twinkly](https://twinkly.com/) LED strings, controlled from
 - **Effects are small JavaScript modules** run in a sandboxed QuickJS runtime on the server, 25–30 times a second. They see each LED's mapped position, so the same effect suits a curtain, a tree or a handrail. Built-in effects include aurora, plasma, fire, snowfall, twinkle and comets.
 - **Write effects in the browser** with a live preview, version history, and an option to try a draft on a real string. Or describe one and let an AI write it.
 - **Transitions are scripts too.** Each light has its own transition for turning on, turning off, and changing effect: wipes, blooms, dissolves, sparkles.
+- **Playlists** let effects take turns, each for its own time, in order or shuffled. A light plays one like an effect, and the string keeps streaming live (no movie per entry). Built-in seasonal playlists (Halloween, Christmas, Independence Day, New Year, Valentine's, Easter, Vappu, Juhannus and the four seasons) start by themselves on the first day of their window and hand back whatever the light showed before when it ends, unless someone picked something else meanwhile; shorter windows nest inside longer ones. Their schedule, dates, lights and effects can all be changed, and effects can be switched off one by one.
 - **Split one string into several lights.** For example, the two handrails of a staircase curtain become separate lights with their own effects and their own MQTT device.
 - **Stored movies.** Effects that loop can be rendered once and uploaded to the string, which then plays them smoothly even on patchy Wi-Fi. Transitions are still streamed live, and the hand-over between the two is seamless.
 - **MQTT** follows the topics of [twinkly-mqtt](https://github.com/FruitieX/twinkly-mqtt), with added presets and multiple colours (see below).
@@ -36,9 +37,10 @@ npm run dev                                    # UI with hot reload at http://lo
 | `GLIMMER_MQTT_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_PREFIX`             | MQTT broker; prefix defaults to `home/lights/twinkly`.                                                                                                                                      |
 | `GLIMMER_AI_URL`, `GLIMMER_AI_KEY`, `GLIMMER_AI_MODEL`                        | An OpenAI-compatible chat completions endpoint (e.g. a Hermes agent, model `hermes-agent`) that writes effects.                                                                             |
 | `GLIMMER_SEED`                                                                | JSON (or a path to it) with strings to add on first start, e.g. `[{"name": "Curtain", "ip": "192.0.2.20"}]`. Optional `"enabled": false` and `"fixtures": [{"id": "Upper", "start": 126}]`. |
+| `GLIMMER_TZ`                                                                  | IANA time zone in which seasonal playlists start and end, e.g. `Europe/Helsinki`. Falls back to `TZ`, then UTC.                                                                             |
 | `GLIMMER_FEEDBACK_HUB`                                                        | Origin of an injected feedback widget, allowed by the CSP.                                                                                                                                  |
 
-Strings, lights, presets and effects are all edited in the app.
+Strings, lights, presets, playlists and effects are all edited in the app.
 
 ## MQTT
 
@@ -56,7 +58,7 @@ Each light publishes its state, retained, on `<prefix>/<light id>`:
     { "h": 270, "s": 0.8 }
   ],
   "preset": "Aurora",
-  "presets": ["Aurora", "Fire"],
+  "presets": ["Aurora", "Fire", "Playlist: Christmas", "Playlist: Everyday"],
   "effect": "aurora"
 }
 ```
@@ -67,10 +69,36 @@ Commands go to `<prefix>/<light id>/set` and may contain any of these fields:
 - `brightness` (0–1)
 - `color`: in any of homectl's forms (`{h,s}`, `{x,y}`, `{r,g,b}`, `{ct}`)
 - `colors`: one per colour slot of the effect
-- `preset`: a preset name
+- `preset`: a preset name, or `Playlist: <name>` to play a playlist (`preset` in the state then names the playlist)
 - `transition_ms` or `transition` (in seconds)
 
-The available preset names are also published on `<prefix>/<light id>/presets`.
+The available preset and playlist names are also published on `<prefix>/<light id>/presets`.
+
+## Playlists
+
+Playlists are managed under `/api/playlists` (`GET`, `POST`, and `PUT`/`DELETE` on `/api/playlists/<id>`) and included in `/api/state`:
+
+```json
+{
+  "name": "Christmas",
+  "shuffle": true,
+  "season": { "from": "12-01", "to": "12-27" },
+  "autoEnabled": true,
+  "lights": null,
+  "entries": [
+    {
+      "scriptId": "xmas-classic-lights",
+      "presetId": null,
+      "params": {},
+      "colors": [],
+      "durationS": 150,
+      "enabled": true
+    }
+  ]
+}
+```
+
+`season` is `null`, `MM-DD` dates (which may wrap over the new year), `{"easter": [-7, 1]}` (days around Easter Sunday) or `{"midsummer": [-1, 2]}` (days around Midsummer Eve, the Friday from 19 to 25 June). With `autoEnabled`, the playlist switches the chosen `lights` (all when `null`) to itself at the start of each window, without touching their power, and at the end puts back what they showed before, if they are still on it. Each light gets this once per window, and lights added during a window join from its next start. Set a light's playlist with `{"playlist": "<id or name>"}` on `/api/fixtures/<id>/state`; picking an effect or preset ends it.
 
 ## Writing effects
 

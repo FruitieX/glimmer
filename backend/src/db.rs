@@ -1,9 +1,9 @@
-//! SQLite storage. Devices, fixtures and presets are JSON documents; scripts
-//! keep every saved version.
+//! SQLite storage. Devices, fixtures, presets and playlists are JSON
+//! documents; scripts keep every saved version.
 
 use crate::{
     builtin,
-    model::{Device, Fixture, FixtureState, Preset, ScriptKind, ScriptSource},
+    model::{Device, Fixture, FixtureState, Playlist, Preset, ScriptKind, ScriptSource},
     script::{Meta, Scripts},
 };
 use rusqlite::{Connection, OptionalExtension, params};
@@ -38,6 +38,11 @@ pub fn open(path: &Path) -> Result<Connection> {
         "CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, data TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS fixtures(id TEXT PRIMARY KEY, data TEXT NOT NULL, state TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS presets(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS playlists(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS seeded(id TEXT PRIMARY KEY);
+         CREATE TABLE IF NOT EXISTS schedule_fired(
+            playlist_id TEXT NOT NULL, fixture_id TEXT NOT NULL, start TEXT NOT NULL,
+            PRIMARY KEY(playlist_id, fixture_id));
          CREATE TABLE IF NOT EXISTS scripts(
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, builtin INTEGER NOT NULL,
             version INTEGER NOT NULL, meta TEXT NOT NULL, updated INTEGER NOT NULL);
@@ -142,6 +147,8 @@ pub fn save_state(db: &Connection, id: &str, state: &FixtureState) -> Result<()>
 pub fn delete_fixture(db: &Connection, id: &str) -> Result<()> {
     db.execute("DELETE FROM fixtures WHERE id=?1", [id])
         .map_err(err)?;
+    db.execute("DELETE FROM schedule_fired WHERE fixture_id=?1", [id])
+        .map_err(err)?;
     Ok(())
 }
 
@@ -169,6 +176,103 @@ pub fn save_preset(db: &Connection, p: &Preset) -> Result<()> {
 pub fn delete_preset(db: &Connection, id: &str) -> Result<()> {
     db.execute("DELETE FROM presets WHERE id=?1", [id])
         .map_err(err)?;
+    Ok(())
+}
+
+// ---- Playlists ----
+
+pub fn playlists(db: &Connection) -> Result<Vec<Playlist>> {
+    let mut stmt = db.prepare("SELECT data FROM playlists").map_err(err)?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
+    let mut out: Vec<Playlist> = rows
+        .map(|r| serde_json::from_str(&r.map_err(err)?).map_err(err))
+        .collect::<Result<_>>()?;
+    out.sort_by(|a, b| (a.sort, &a.name).cmp(&(b.sort, &b.name)));
+    Ok(out)
+}
+
+pub fn save_playlist(db: &Connection, p: &Playlist) -> Result<()> {
+    db.execute(
+        "INSERT INTO playlists(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+        params![p.id, serde_json::to_string(p).map_err(err)?],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
+pub fn delete_playlist(db: &Connection, id: &str) -> Result<()> {
+    db.execute("DELETE FROM playlists WHERE id=?1", [id])
+        .map_err(err)?;
+    db.execute("DELETE FROM schedule_fired WHERE playlist_id=?1", [id])
+        .map_err(err)?;
+    Ok(())
+}
+
+/// Adds built-in playlists that were never added before (so edits and
+/// deletions stay), and new built-in effects to the seasonal ones they
+/// belong to unless the user took them out. Call after `sync_builtins`.
+pub fn seed_playlists(db: &Connection) -> Result<()> {
+    let effects: Vec<String> = scripts(db)?
+        .into_iter()
+        .filter(|s| s.builtin && s.kind == ScriptKind::Effect)
+        .map(|s| s.id)
+        .collect();
+    let mut sort = playlists(db)?.iter().map(|p| p.sort).max().unwrap_or(0);
+    for b in crate::playlist::builtins() {
+        let key = format!("playlist:{}", b.id);
+        let seeded = db
+            .query_row("SELECT 1 FROM seeded WHERE id=?1", [&key], |_| Ok(()))
+            .optional()
+            .map_err(err)?
+            .is_some();
+        let existing = playlists(db)?.into_iter().find(|p| p.id == b.id);
+        if !seeded {
+            if existing.is_none() {
+                sort += 1;
+                save_playlist(db, &b.playlist(&effects, sort))?;
+            }
+            db.execute("INSERT INTO seeded(id) VALUES(?1)", [&key])
+                .map_err(err)?;
+        } else if let Some(mut p) = existing.filter(|p| p.builtin && b.prefix.is_some()) {
+            let new: Vec<&String> = b
+                .scripts(&effects)
+                .into_iter()
+                .filter(|id| {
+                    !p.removed.contains(id) && !p.entries.iter().any(|e| e.script_id == **id)
+                })
+                .collect();
+            if !new.is_empty() {
+                p.entries.extend(new.into_iter().map(|id| b.entry(id)));
+                save_playlist(db, &p)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The start of the window a playlist's schedule last put on a fixture.
+pub fn schedule_fired(db: &Connection, playlist: &str, fixture: &str) -> Result<Option<String>> {
+    db.query_row(
+        "SELECT start FROM schedule_fired WHERE playlist_id=?1 AND fixture_id=?2",
+        [playlist, fixture],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(err)
+}
+
+pub fn set_schedule_fired(
+    db: &Connection,
+    playlist: &str,
+    fixture: &str,
+    start: &str,
+) -> Result<()> {
+    db.execute(
+        "INSERT INTO schedule_fired(playlist_id,fixture_id,start) VALUES(?1,?2,?3)
+         ON CONFLICT(playlist_id,fixture_id) DO UPDATE SET start=excluded.start",
+        [playlist, fixture, start],
+    )
+    .map_err(err)?;
     Ok(())
 }
 
@@ -401,5 +505,52 @@ mod tests {
         assert!(script(&db, "solid").unwrap().is_some(), "built-ins stay");
         delete_script(&db, &id).unwrap();
         assert!(script_source(&db, &id, None).unwrap().is_none());
+    }
+
+    #[test]
+    fn builtin_playlists_are_seeded_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open(&dir.path().join("t.sqlite3")).unwrap();
+        sync_builtins(&db).unwrap();
+        seed_playlists(&db).unwrap();
+        let all = playlists(&db).unwrap();
+        assert_eq!(all.len(), crate::playlist::builtins().len());
+        let mut halloween = all.into_iter().find(|p| p.id == "halloween").unwrap();
+        let ghosts = halloween.entries.remove(0).script_id;
+        halloween.removed.push(ghosts.clone());
+        halloween.entries.remove(0);
+        halloween.name = "Spooky".into();
+        save_playlist(&db, &halloween).unwrap();
+        delete_playlist(&db, "summer").unwrap();
+        seed_playlists(&db).unwrap();
+        let all = playlists(&db).unwrap();
+        let halloween = all.iter().find(|p| p.id == "halloween").unwrap();
+        assert_eq!(halloween.name, "Spooky", "edits stay");
+        assert!(!all.iter().any(|p| p.id == "summer"), "deletions stay");
+        // A new built-in effect joins its playlist; removed ones stay out.
+        let n = halloween.entries.len();
+        assert!(!halloween.entries.iter().any(|e| e.script_id == ghosts));
+        assert_eq!(
+            n,
+            crate::playlist::builtins()[0]
+                .scripts(
+                    &scripts(&db)
+                        .unwrap()
+                        .into_iter()
+                        .map(|s| s.id)
+                        .collect::<Vec<_>>()
+                )
+                .len()
+                - 1
+        );
+        set_schedule_fired(&db, "halloween", "Curtain", "2026-10-01").unwrap();
+        assert_eq!(
+            schedule_fired(&db, "halloween", "Curtain")
+                .unwrap()
+                .as_deref(),
+            Some("2026-10-01")
+        );
+        delete_playlist(&db, "halloween").unwrap();
+        assert_eq!(schedule_fired(&db, "halloween", "Curtain").unwrap(), None);
     }
 }

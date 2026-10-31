@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Bookmark,
+  CalendarClock,
   Check,
+  ListMusic,
   Pencil,
   Settings2,
   Sparkles,
@@ -10,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   colorValues,
+  dayLabel,
   del,
   paramValues,
   post,
@@ -28,6 +31,7 @@ import {
   groupByCategory,
 } from "../components/Categories";
 import { DeviceSettingsDialog } from "./DeviceSettings";
+import { PlaylistCard } from "./Playlists";
 import { Link, useApp, useRoute } from "../main";
 import { Mirror } from "../components/Mirror";
 import { ColorControls, ParamControls } from "../components/controls";
@@ -88,8 +92,14 @@ function Light({
   const gallery = useGallery("effect", fixture.id);
   const groups = groupByCategory(effects);
   const [category, setCategory] = useState(() =>
-    script ? categoryOf(script) : (groups[0]?.[0] ?? "Basics"),
+    item.state.playlistId
+      ? "Playlists"
+      : script
+        ? categoryOf(script)
+        : (groups[0]?.[0] ?? "Basics"),
   );
+  const playlist = state.playlists.find((p) => p.id === item.state.playlistId);
+  const scheduled = item.state.scheduled;
   const [settings, setSettings] = useState(false);
 
   // Local copies so sliders feel instant; the server echo replaces them.
@@ -197,6 +207,24 @@ function Light({
               {error}
             </p>
           )}
+          {playlist && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line px-4 py-2.5 text-xs text-muted">
+              <ListMusic size={14} className="text-glow" />
+              <span className="font-medium text-soft">{playlist.name}</span>·
+              <span>{script?.name ?? item.state.look.scriptId}</span>
+              {item.playing?.entry != null && (
+                <span>
+                  ({item.playing.entry + 1} of {playlist.entries.length})
+                </span>
+              )}
+              {scheduled?.playlistId === playlist.id && (
+                <Badge tone="glow">
+                  <CalendarClock size={11} /> {playlist.name} · until{" "}
+                  {dayLabel(scheduled.until)}
+                </Badge>
+              )}
+            </p>
+          )}
           {status?.movie && (
             <p className="border-t border-line px-4 py-2.5 text-xs text-muted">
               Movie: {status.movie}
@@ -257,15 +285,35 @@ function Light({
 
       <Section title="Effect">
         <CategoryChips
-          groups={groups}
+          groups={[["Playlists", state.playlists], ...groups]}
           value={category}
           onChange={setCategory}
           all={false}
         />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {layout?.points.length
+          {layout?.points.length && category === "Playlists"
+            ? state.playlists.map((p) => {
+                const active = p.id === item.state.playlistId;
+                return (
+                  <PlaylistCard
+                    key={p.id}
+                    playlist={p}
+                    frames={gallery}
+                    layout={layout}
+                    active={active}
+                    onClick={() =>
+                      !active &&
+                      run(() => send({ playlist: p.id, power: true }))
+                    }
+                  />
+                );
+              })
+            : null}
+          {layout?.points.length && category !== "Playlists"
             ? (groups.find(([c]) => c === category)?.[1] ?? []).map((e) => {
-                const active = e.id === item.state.look.scriptId;
+                // While a playlist plays, picking its effect keeps it instead.
+                const active =
+                  e.id === item.state.look.scriptId && !item.state.playlistId;
                 return (
                   <EffectCard
                     key={e.id}

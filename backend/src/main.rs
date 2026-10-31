@@ -11,6 +11,7 @@ mod layout;
 mod model;
 mod mqtt;
 mod oidc;
+mod playlist;
 mod preview;
 mod script;
 mod web;
@@ -144,6 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     db::sync_builtins(&conn)?;
+    db::seed_playlists(&conn)?;
 
     let origin = env("GLIMMER_ORIGIN").unwrap_or("http://localhost:3110".into());
     let origin = origin.trim_end_matches('/').to_string();

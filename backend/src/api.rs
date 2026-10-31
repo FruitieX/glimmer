@@ -5,7 +5,11 @@ use crate::{
     app::{StatePatch, new_device, new_fixture},
     db,
     engine::Command,
-    model::{Device, Fixture, FixtureState, Look, Preset, ScriptKind, ScriptSource, slug},
+    model::{
+        Device, Fixture, FixtureState, Look, Playlist, PlaylistEntry, Preset, ScriptKind,
+        ScriptSource, Season, slug,
+    },
+    playlist,
     script::Scripts,
     web::{ApiError, Result, Server},
 };
@@ -45,6 +49,11 @@ pub fn routes() -> Router<Server> {
         .route(
             "/api/presets/{id}",
             put(update_preset).delete(delete_preset),
+        )
+        .route("/api/playlists", get(list_playlists).post(create_playlist))
+        .route(
+            "/api/playlists/{id}",
+            put(update_playlist).delete(delete_playlist),
         )
         .route("/api/scripts", post(create_script))
         .route("/api/scripts/check", post(check_script))
@@ -87,7 +96,8 @@ async fn state(State(s): S, headers: HeaderMap) -> Result<Response> {
                         "points": l.points.iter().map(|p| p.map(round)).collect::<Vec<_>>(),
                     })
                 });
-                json!({ "fixture": fixture, "state": state, "layout": points })
+                let playing = s.app.playing(&fixture.id);
+                json!({ "fixture": fixture, "state": state, "layout": points, "playing": playing })
             })
             .collect();
         json!({
@@ -95,6 +105,7 @@ async fn state(State(s): S, headers: HeaderMap) -> Result<Response> {
             "devices": devices,
             "fixtures": fixtures,
             "presets": db::presets(&db)?,
+            "playlists": db::playlists(&db)?,
             "scripts": db::scripts(&db)?,
             "status": *s.app.engine.status.read().unwrap(),
             "ai": s.app.ai.is_some(),
@@ -156,6 +167,7 @@ async fn create_device(
             &new_fixture(&device.name, &device, 0, 0, sort),
             &FixtureState::default(),
         )?;
+        crate::app::App::skip_running_schedules(&db, &device.name)?;
     }
     let app = s.app.clone();
     let id = device.id.clone();
@@ -320,6 +332,7 @@ async fn create_fixture(
         let fixture = new_fixture(&id, &device, body.start, body.count, sort);
         check_range(&device, &fixture)?;
         db::save_fixture(&db, &fixture, &FixtureState::default())?;
+        crate::app::App::skip_running_schedules(&db, &fixture.id)?;
         fixture
     };
     let app = s.app.clone();
@@ -530,7 +543,183 @@ async fn delete_preset(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     s.user(&headers)?;
-    db::delete_preset(&*s.app.db()?, &id)?;
+    {
+        let db = s.app.db()?;
+        db::delete_preset(&db, &id)?;
+        // Playlist entries fall back to their own effect.
+        for mut p in db::playlists(&db)? {
+            if p.entries
+                .iter()
+                .any(|e| e.preset_id.as_deref() == Some(&id))
+            {
+                for e in &mut p.entries {
+                    if e.preset_id.as_deref() == Some(&id) {
+                        e.preset_id = None;
+                    }
+                }
+                db::save_playlist(&db, &p)?;
+            }
+        }
+    }
+    s.app.changed();
+    Ok(Json(json!({})))
+}
+
+// ---- Playlists ----
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistBody {
+    name: String,
+    entries: Vec<PlaylistEntry>,
+    #[serde(default)]
+    shuffle: bool,
+    #[serde(default)]
+    season: Option<Season>,
+    #[serde(default)]
+    auto_enabled: bool,
+    #[serde(default)]
+    lights: Option<Vec<String>>,
+}
+
+/// Checks a playlist and fills in its id and order; `id` is set for an update.
+fn checked_playlist(
+    db: &rusqlite::Connection,
+    id: Option<&str>,
+    body: PlaylistBody,
+) -> std::result::Result<Playlist, ApiError> {
+    let name = body.name.trim().to_string();
+    if name.is_empty() {
+        return Err(ApiError::bad("Give the playlist a name."));
+    }
+    let playlists = db::playlists(db)?;
+    if playlists
+        .iter()
+        .any(|p| Some(p.id.as_str()) != id && p.name.eq_ignore_ascii_case(&name))
+    {
+        return Err(ApiError::bad("A playlist with that name already exists."));
+    }
+    let presets = db::presets(db)?;
+    for e in &body.entries {
+        if db::script_source(db, &e.script_id, None)?.is_none_or(|s| s.kind != ScriptKind::Effect) {
+            return Err(ApiError::bad(format!("No effect called {}.", e.script_id)));
+        }
+        if let Some(p) = &e.preset_id
+            && !presets.iter().any(|x| x.id == *p)
+        {
+            return Err(ApiError::bad(format!("No preset called {p}.")));
+        }
+        if !(1.0..=86_400.0).contains(&e.duration_s) {
+            return Err(ApiError::bad("Each entry plays for 1 second to 24 hours."));
+        }
+    }
+    if let Some(season) = &body.season {
+        season.validate().map_err(ApiError::bad)?;
+    }
+    let lights = match body.lights {
+        Some(lights) => {
+            let fixtures = db::fixtures(db)?;
+            if let Some(l) = lights
+                .iter()
+                .find(|l| !fixtures.iter().any(|(f, _)| f.id == **l))
+            {
+                return Err(ApiError::bad(format!("No light called {l}.")));
+            }
+            Some(lights)
+        }
+        None => None,
+    };
+    let (id, builtin, sort, removed) = match id {
+        Some(id) => {
+            let old = playlists
+                .iter()
+                .find(|p| p.id == id)
+                .ok_or_else(|| ApiError::not_found("The playlist"))?;
+            // Effects taken out stay out when new built-in effects are added.
+            let mut removed: Vec<String> = old
+                .removed
+                .iter()
+                .chain(old.entries.iter().map(|e| &e.script_id))
+                .filter(|s| !body.entries.iter().any(|e| e.script_id == **s))
+                .cloned()
+                .collect();
+            removed.sort();
+            removed.dedup();
+            (id.to_string(), old.builtin, old.sort, removed)
+        }
+        None => {
+            let mut id = slug(&name);
+            if id.is_empty() || playlists.iter().any(|p| p.id == id) {
+                id = format!("playlist-{}", &crate::web::token()[..8]);
+            }
+            let sort = playlists.iter().map(|p| p.sort).max().unwrap_or(0) + 1;
+            (id, false, sort, vec![])
+        }
+    };
+    Ok(Playlist {
+        id,
+        name,
+        entries: body.entries,
+        shuffle: body.shuffle,
+        auto_enabled: body.auto_enabled && body.season.is_some(),
+        season: body.season,
+        lights,
+        builtin,
+        removed,
+        sort,
+    })
+}
+
+async fn list_playlists(State(s): S, headers: HeaderMap) -> Result<Json<Vec<Playlist>>> {
+    s.user(&headers)?;
+    Ok(Json(db::playlists(&*s.app.db()?)?))
+}
+
+async fn create_playlist(
+    State(s): S,
+    headers: HeaderMap,
+    Json(body): Json<PlaylistBody>,
+) -> Result<Json<Playlist>> {
+    s.user(&headers)?;
+    let playlist = {
+        let db = s.app.db()?;
+        let playlist = checked_playlist(&db, None, body)?;
+        db::save_playlist(&db, &playlist)?;
+        playlist
+    };
+    s.app.run_schedules(playlist::today())?;
+    s.app.changed();
+    Ok(Json(playlist))
+}
+
+/// Lights playing the playlist pick up the change at their next entry; a
+/// changed schedule starts or ends right away.
+async fn update_playlist(
+    State(s): S,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<PlaylistBody>,
+) -> Result<Json<Playlist>> {
+    s.user(&headers)?;
+    let playlist = {
+        let db = s.app.db()?;
+        let playlist = checked_playlist(&db, Some(&id), body)?;
+        db::save_playlist(&db, &playlist)?;
+        playlist
+    };
+    s.app.run_schedules(playlist::today())?;
+    s.app.changed();
+    Ok(Json(playlist))
+}
+
+async fn delete_playlist(
+    State(s): S,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    s.user(&headers)?;
+    db::delete_playlist(&*s.app.db()?, &id)?;
+    s.app.playlist_deleted(&id)?;
     s.app.changed();
     Ok(Json(json!({})))
 }
@@ -694,6 +883,12 @@ async fn delete_script(
                     .into_iter()
                     .filter(|p| p.look.script_id == id)
                     .map(|p| p.name),
+            )
+            .chain(
+                db::playlists(&db)?
+                    .into_iter()
+                    .filter(|p| p.entries.iter().any(|e| e.script_id == id))
+                    .map(|p| format!("the {} playlist", p.name)),
             )
             .collect();
         if !used_by.is_empty() {

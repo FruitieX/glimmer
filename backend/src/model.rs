@@ -131,6 +131,37 @@ pub struct FixtureState {
     /// The preset the look came from, while unchanged.
     #[serde(default)]
     pub preset_id: Option<String>,
+    /// The playlist choosing the look.
+    #[serde(default)]
+    pub playlist_id: Option<String>,
+    /// Set while a playlist's schedule put it on, until the user picks
+    /// something else.
+    #[serde(default)]
+    pub scheduled: Option<Box<Scheduled>>,
+}
+
+/// A scheduled playlist on a fixture and what to go back to afterwards.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Scheduled {
+    pub playlist_id: String,
+    /// Last day of the window, `YYYY-MM-DD`.
+    pub until: String,
+    pub resume: Selection,
+}
+
+/// What a fixture showed before a schedule took over.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Selection {
+    pub look: Look,
+    #[serde(default)]
+    pub preset_id: Option<String>,
+    #[serde(default)]
+    pub playlist_id: Option<String>,
+    /// An outer schedule that was showing (windows nest).
+    #[serde(default)]
+    pub scheduled: Option<Box<Scheduled>>,
 }
 
 impl Default for FixtureState {
@@ -140,6 +171,8 @@ impl Default for FixtureState {
             brightness: 1.0,
             look: Look::default(),
             preset_id: None,
+            playlist_id: None,
+            scheduled: None,
         }
     }
 }
@@ -151,6 +184,73 @@ pub struct Preset {
     pub id: String,
     pub name: String,
     pub look: Look,
+    #[serde(default)]
+    pub sort: i64,
+}
+
+/// One look in a playlist and how long it shows.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistEntry {
+    pub script_id: String,
+    /// When set (and the preset exists), the preset's look is shown instead.
+    #[serde(default)]
+    pub preset_id: Option<String>,
+    #[serde(default)]
+    pub params: Value,
+    #[serde(default)]
+    pub colors: Vec<String>,
+    #[serde(default = "default_entry_s")]
+    pub duration_s: f64,
+    /// Disabled entries are skipped.
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+fn default_entry_s() -> f64 {
+    60.0
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// When a playlist is in season, every year.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Season {
+    /// `MM-DD` to `MM-DD`, both included; may wrap over the new year.
+    Dates { from: String, to: String },
+    /// Days relative to (Gregorian) Easter Sunday, both included.
+    Easter { easter: [i32; 2] },
+    /// Days relative to Midsummer Eve (the Friday from June 19 to 25).
+    Midsummer { midsummer: [i32; 2] },
+}
+
+/// Looks shown one after another; homectl and the UI pick it like a preset.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Playlist {
+    pub id: String,
+    pub name: String,
+    pub entries: Vec<PlaylistEntry>,
+    #[serde(default)]
+    pub shuffle: bool,
+    #[serde(default)]
+    pub season: Option<Season>,
+    /// Put the playlist on by itself when its season starts.
+    #[serde(default)]
+    pub auto_enabled: bool,
+    /// The lights the schedule applies to; none: all of them.
+    #[serde(default)]
+    pub lights: Option<Vec<String>>,
+    /// Added by the app (and still editable).
+    #[serde(default)]
+    pub builtin: bool,
+    /// Effects the user took out of a built-in playlist, so new built-in
+    /// effects are added but these don't come back.
+    #[serde(default)]
+    pub removed: Vec<String>,
     #[serde(default)]
     pub sort: i64,
 }

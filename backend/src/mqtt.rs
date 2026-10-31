@@ -1,11 +1,14 @@
 //! MQTT bridge for homectl, compatible with twinkly-mqtt's topics:
 //! state is published (retained) on `<prefix>/<fixture id>`, commands
 //! arrive on `<prefix>/<fixture id>/set`, and the presets homectl can pick
-//! are published on `<prefix>/<fixture id>/presets`.
+//! are published on `<prefix>/<fixture id>/presets`. Playlists appear among
+//! the presets as `Playlist: <name>`.
 
 use crate::{
     app::{App, Event, StatePatch},
     color, db,
+    model::{Playlist, Preset},
+    playlist,
 };
 use rumqttc::{AsyncClient, Event as MqttEvent, MqttOptions, Packet, QoS};
 use serde::Deserialize;
@@ -91,12 +94,19 @@ fn state_payload(app: &App, id: &str) -> Result<Value, String> {
         .map(color::to_json)
         .collect();
     let presets = db::presets(&db)?;
-    let preset = state
-        .preset_id
-        .as_ref()
-        .and_then(|p| presets.iter().find(|x| x.id == *p))
-        .map(|p| p.name.clone());
-    let names: Vec<&str> = presets.iter().map(|p| p.name.as_str()).collect();
+    let playlists = db::playlists(&db)?;
+    let preset = match &state.playlist_id {
+        Some(id) => playlists
+            .iter()
+            .find(|p| p.id == *id)
+            .map(playlist::preset_name),
+        None => state
+            .preset_id
+            .as_ref()
+            .and_then(|p| presets.iter().find(|x| x.id == *p))
+            .map(|p| p.name.clone()),
+    };
+    let names = preset_names(&presets, &playlists);
     Ok(json!({
         "id": fixture.id,
         "name": fixture.name,
@@ -110,15 +120,26 @@ fn state_payload(app: &App, id: &str) -> Result<Value, String> {
     }))
 }
 
+/// What homectl can pick: the presets, then the playlists.
+fn preset_names(presets: &[Preset], playlists: &[Playlist]) -> Vec<String> {
+    presets
+        .iter()
+        .map(|p| p.name.clone())
+        .chain(playlists.iter().map(playlist::preset_name))
+        .collect()
+}
+
 async fn publish_all(app: &App, client: &AsyncClient, prefix: &str, known: &mut HashSet<String>) {
-    let (fixtures, presets) = {
+    let (fixtures, names) = {
         let Ok(db) = app.db() else { return };
         (
             db::fixtures(&db).unwrap_or_default(),
-            db::presets(&db).unwrap_or_default(),
+            preset_names(
+                &db::presets(&db).unwrap_or_default(),
+                &db::playlists(&db).unwrap_or_default(),
+            ),
         )
     };
-    let names: Vec<&str> = presets.iter().map(|p| p.name.as_str()).collect();
     let current: HashSet<String> = fixtures.iter().map(|(f, _)| f.id.clone()).collect();
     for (f, _) in &fixtures {
         publish_state(app, client, prefix, &f.id).await;

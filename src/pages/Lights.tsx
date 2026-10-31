@@ -86,6 +86,7 @@ function LightCard({
   const toast = useToast();
   const script = state.scripts.find((s) => s.id === item.state.look.scriptId);
   const preset = state.presets.find((p) => p.id === item.state.presetId);
+  const playlist = state.playlists.find((p) => p.id === item.state.playlistId);
   const source = useCallback(() => frames.get(fixture.id), [fixture.id]);
   const disabled = !device?.enabled;
   const [settings, setSettings] = useState(false);
@@ -139,7 +140,9 @@ function LightCard({
           >
             <h3 className="truncate font-semibold">{fixture.name}</h3>
             <p className="truncate text-sm text-muted">
-              {preset?.name ?? script?.name ?? item.state.look.scriptId}
+              {playlist
+                ? `${playlist.name} · ${script?.name ?? item.state.look.scriptId}`
+                : (preset?.name ?? script?.name ?? item.state.look.scriptId)}
             </p>
           </Link>
           <Toggle
