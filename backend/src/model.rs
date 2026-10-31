@@ -249,12 +249,25 @@ impl LightTransitions {
 }
 
 /// App-wide settings, each stored under its own key.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     /// Used by every light slot that has no list of its own.
     #[serde(default)]
     pub transitions: Transitions,
+    /// Previews stretch a light's LEDs to fill the preview instead of
+    /// keeping the light's proportions.
+    #[serde(default = "yes")]
+    pub fill_previews: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            transitions: Transitions::default(),
+            fill_previews: true,
+        }
+    }
 }
 
 /// What a fixture shows when on: an effect with its settings.

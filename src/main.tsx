@@ -83,6 +83,11 @@ const StateContext = createContext<{
   reload: () => Promise<void>;
 } | null>(null);
 
+/** Whether previews fill their box (an app setting; on by default). */
+export function useFillPreviews() {
+  return useContext(StateContext)?.state.settings.fillPreviews ?? true;
+}
+
 export function useApp() {
   const ctx = useContext(StateContext);
   if (!ctx) throw new Error("no app state");

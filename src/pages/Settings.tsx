@@ -4,7 +4,7 @@ import { post, put, type Slot, type Transitions } from "../api";
 import { GRID, useGallery } from "../live";
 import { useApp } from "../main";
 import { TransitionList } from "../components/TransitionList";
-import { Button, Card, Section, useAction } from "../components/ui";
+import { Button, Card, Section, Toggle, useAction } from "../components/ui";
 import { useThrottled } from "./Lights";
 
 export const SLOTS: [Slot, string, string][] = [
@@ -48,6 +48,33 @@ export function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-muted">Settings for the whole app.</p>
       </div>
+      <Section title="Previews">
+        <Card className="p-4">
+          <label className="flex items-center justify-between gap-4 text-sm">
+            <span>
+              <span className="font-medium">Fill the preview</span>
+              <span className="mt-0.5 block text-xs text-muted">
+                Spread a light's LEDs over the whole preview, so they're easy to
+                see. Off: keep the light's real proportions.
+              </span>
+            </span>
+            <Toggle
+              label="Fill the preview"
+              checked={state.settings.fillPreviews}
+              disabled={busy}
+              onChange={(v) =>
+                run(async () => {
+                  await put("/settings", {
+                    ...state.settings,
+                    fillPreviews: v,
+                  });
+                  await reload();
+                })
+              }
+            />
+          </label>
+        </Card>
+      </Section>
       <Section title="Transitions for all lights">
         <p className="-mt-1 text-sm text-muted">
           How lights turn on, turn off and change effect, unless a light has its

@@ -146,6 +146,8 @@ export type Transitions = Record<Slot, TransitionSpec[]>;
 export interface Settings {
   /** Used by every light slot that has no list of its own. */
   transitions: Transitions;
+  /** Stretch previews to fill their box instead of keeping proportions. */
+  fillPreviews: boolean;
 }
 
 export interface Look {

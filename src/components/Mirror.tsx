@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useFillPreviews } from "../main";
 
 interface Props {
   points: [number, number, number][];
@@ -21,6 +22,7 @@ export function Mirror({
   dot = 1,
   onVisible,
 }: Props) {
+  const fill = useFillPreviews();
   const crisp = useRef<HTMLCanvasElement>(null);
   const glow = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -67,12 +69,12 @@ export function Mirror({
       last = data;
       const { w, h, dpr } = size;
       if (!w || !h) return;
-      // Fit the fixture's shape into the box.
+      // Fill the box, or fit the fixture's shape into it.
       const a = Math.min(Math.max(aspect || 1, 0.25), 6);
       const pad = 14;
       let fw = w - pad * 2;
-      let fh = fw / a;
-      if (fh > h - pad * 2) {
+      let fh = fill ? h - pad * 2 : fw / a;
+      if (!fill && fh > h - pad * 2) {
         fh = h - pad * 2;
         fw = fh * a;
       }
@@ -126,7 +128,7 @@ export function Mirror({
       observer.disconnect();
       seen.disconnect();
     };
-  }, [points, aspect, source, dot, onVisible]);
+  }, [points, aspect, source, dot, onVisible, fill]);
 
   return (
     <div ref={box} className={`relative overflow-hidden ${className}`}>

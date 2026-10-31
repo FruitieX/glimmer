@@ -67,6 +67,7 @@ pub fn open(path: &Path) -> Result<Connection> {
 // ---- Settings ----
 
 const TRANSITIONS_KEY: &str = "transitions";
+const FILL_PREVIEWS_KEY: &str = "fillPreviews";
 
 fn setting<T: serde::de::DeserializeOwned>(db: &Connection, key: &str) -> Result<Option<T>> {
     db.query_row("SELECT data FROM settings WHERE key=?1", [key], |r| {
@@ -90,11 +91,13 @@ fn save_setting(db: &Connection, key: &str, value: &impl Serialize) -> Result<()
 pub fn settings(db: &Connection) -> Result<Settings> {
     Ok(Settings {
         transitions: setting(db, TRANSITIONS_KEY)?.unwrap_or_default(),
+        fill_previews: setting(db, FILL_PREVIEWS_KEY)?.unwrap_or(true),
     })
 }
 
 pub fn save_settings(db: &Connection, s: &Settings) -> Result<()> {
-    save_setting(db, TRANSITIONS_KEY, &s.transitions)
+    save_setting(db, TRANSITIONS_KEY, &s.transitions)?;
+    save_setting(db, FILL_PREVIEWS_KEY, &s.fill_previews)
 }
 
 /// Before the transitions for all lights existed, every light had its own
