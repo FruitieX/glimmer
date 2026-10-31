@@ -2,7 +2,6 @@ export const meta = {
   name: "Sierpinski Zoom",
   description: "An endless zoom into the Sierpinski triangle or carpet, where every corner hides smaller copies of the whole.",
   category: "Fractals",
-  antialias: true,
   colors: [
     { id: "lattice", label: "Lattice", default: "#ffc96b" },
     { id: "a", label: "Large holes", default: "#1a2290" },
@@ -25,33 +24,112 @@ export function loop(params) {
 const H3 = Math.sqrt(3) / 2;
 const K = 7;
 
-// Triangle: depth of the hole containing (px, py), K if in the set, -1 outside.
-function triDepth(px, py) {
-  let v = py / H3, u = px - 0.5 * v;
-  if (u < 0 || v < 0 || u + v > 1) return -1;
-  for (let k = 0; k < K; k++) {
-    u *= 2; v *= 2;
-    if (u >= 1) u -= 1;
-    else if (v >= 1) v -= 1;
-    else if (u + v > 1) return k;
-  }
-  return K;
+// What the last lookup found (kept in variables so nothing is allocated per
+// LED): the depth of the hole containing the point (K in the set, -1 outside
+// the shape), its distance to that region's edge and the hole's size, and
+// every hole the point lies just outside of (-1: the shape's outline), with
+// how much of its colour spills onto this LED. Distances are in shape units.
+let qDepth = 0, qIn = 0, qR = 0, qN = 0, qHw = 0;
+const nearDepth = new Int8Array(K + 1);
+const nearW = new Float32Array(K + 1);
+
+function near(depth, d, r) {
+  if (d >= qHw) return;
+  nearDepth[qN] = depth;
+  nearW[qN] = smoothstep(qHw, -qHw, d) * Math.min(1, (r * r) / (qHw * qHw));
+  qN++;
 }
 
-// Carpet: depth of the square hole containing (px, py).
-function carpetDepth(px, py) {
-  if (px < 0 || py < 0 || px > 1 || py > 1) return -1;
-  for (let k = 0; k < K; k++) {
-    px *= 3; py *= 3;
-    const ix = px >= 2 ? 2 : px | 0, iy = py >= 2 ? 2 : py | 0;
-    if (ix === 1 && iy === 1) return k;
-    px -= ix; py -= iy;
+function triDepth(px, py) {
+  let v = py / H3, u = px - 0.5 * v;
+  // World distance per unit of the triangle's own coordinates at this level.
+  let sc = H3;
+  qN = 0;
+  const outside = Math.max(-u, -v, u + v - 1);
+  if (outside > 0) {
+    qDepth = -1;
+    qIn = outside * sc;
+    qR = 1e9;
+    return;
   }
-  return K;
+  near(-1, Math.min(u, v, 1 - u - v) * sc, 1e9);
+  for (let k = 0; k < K; k++) {
+    u *= 2;
+    v *= 2;
+    sc *= 0.5;
+    let d;
+    if (u >= 1) {
+      u -= 1;
+      d = u * sc;
+    } else if (v >= 1) {
+      v -= 1;
+      d = v * sc;
+    } else if (u + v > 1) {
+      qDepth = k;
+      qIn = Math.min(1 - u, 1 - v, u + v - 1) * sc;
+      qR = sc / 3;
+      return;
+    } else d = (1 - u - v) * sc;
+    near(k, d, sc / 3);
+  }
+  qDepth = K;
+}
+
+function carpetDepth(px, py) {
+  qN = 0;
+  const outside = Math.max(-px, -py, px - 1, py - 1);
+  if (outside > 0) {
+    qDepth = -1;
+    qIn = outside;
+    qR = 1e9;
+    return;
+  }
+  near(-1, Math.min(px, py, 1 - px, 1 - py), 1e9);
+  let sc = 1;
+  for (let k = 0; k < K; k++) {
+    px *= 3;
+    py *= 3;
+    sc /= 3;
+    const ix = px >= 2 ? 2 : px | 0, iy = py >= 2 ? 2 : py | 0;
+    if (ix === 1 && iy === 1) {
+      qDepth = k;
+      qIn = Math.min(px - 1, 2 - px, py - 1, 2 - py) * sc;
+      qR = sc * 0.5;
+      return;
+    }
+    const ex = px < 1 ? 1 - px : px > 2 ? px - 2 : 0;
+    const ey = py < 1 ? 1 - py : py > 2 ? py - 2 : 0;
+    const d = Math.max(ex, ey) * sc;
+    near(k, d, sc * 0.5);
+    px -= ix;
+    py -= iy;
+  }
+  qDepth = K;
+}
+
+// Colour of a region of depth d, into cr/cg/cb.
+let cr = 0, cg = 0, cb = 0;
+function shade(d, ph, lat, p0, p1, bg, latGlow) {
+  if (d < 0) {
+    cr = bg[0];
+    cg = bg[1];
+    cb = bg[2];
+    return;
+  }
+  // Colour follows a hole's size on screen (depth minus zoom phase), so the
+  // loop is seamless; the tiniest holes blend into the lattice.
+  const e = d - ph;
+  const deep = clamp((K - 1 - e) / 3);
+  const m = clamp((e - 0.5) / 3.5);
+  const holeK = (0.2 + 0.55 * clamp(1 - (e - 0.5) / 5)) * deep;
+  const latK = latGlow * (1 - deep);
+  cr = bg[0] + (p0[0] + (p1[0] - p0[0]) * m) * holeK + lat[0] * latK;
+  cg = bg[1] + (p0[1] + (p1[1] - p0[1]) * m) * holeK + lat[1] * latK;
+  cb = bg[2] + (p0[2] + (p1[2] - p0[2]) * m) * holeK + lat[2] * latK;
 }
 
 export function render(ctx) {
-  const { n, x, y, out, colors, params, t, aspect } = ctx;
+  const { n, x, y, out, colors, params, t, aspect, spacing } = ctx;
   const carpet = params.shape === "carpet";
   const ph = fract(t * params.speed);
   const f = carpet ? 3 : 2;
@@ -66,21 +144,40 @@ export function render(ctx) {
   const line = hi - lo < 0.02;
   const sx = line || aspect >= 1 ? 1 : aspect, sy = line ? 0 : aspect >= 1 ? 1 / aspect : 1;
   const lat = colors[0] || [1, 0.9, 0.7];
-  const pal = [colors[1] || [0.3, 0.1, 0.6], colors[2] || [0.05, 0.7, 0.65]];
+  const p0 = colors[1] || [0.3, 0.1, 0.6];
+  const p1 = colors[2] || [0.05, 0.7, 0.65];
   const bg = colors[3] || [0, 0, 0];
+  const latGlow = params.glow * (carpet ? 0.5 : 1);
+  // Edges fade over about one LED: half that, in shape units.
+  const hw = 0.5 * spacing * Math.max(sx, sy) * S;
+  qHw = hw;
+  const lr = lat[0] * latGlow + bg[0], lg = lat[1] * latGlow + bg[1], lb = lat[2] * latGlow + bg[2];
   for (let i = 0; i < n; i++) {
     const X = (x[i] - 0.5) * sx, Y = (line ? (carpet ? -0.1 : -0.25) : (y[i] - 0.5) * sy) + yOff;
     const px = zx + X * S, py = zy + Y * S;
-    const d = carpet ? carpetDepth(px, py) : triDepth(px, py);
+    if (carpet) carpetDepth(px, py);
+    else triDepth(px, py);
+    shade(qDepth, ph, lat, p0, p1, bg, latGlow);
+    let r = cr, g = cg, b = cb;
+    if (qDepth < K && qIn < hw) {
+      // Near the edge of a hole (or of the shape): fade towards the lattice
+      // beyond it; a hole smaller than an LED only tints it a little.
+      const cover = smoothstep(-hw, hw, qIn) * Math.min(1, (qR * qR) / (hw * hw));
+      r = lr + (r - lr) * cover;
+      g = lg + (g - lg) * cover;
+      b = lb + (b - lb) * cover;
+    }
+    // Just outside holes (or inside the outline): take on some of their colour.
+    for (let j = 0; j < qN; j++) {
+      const w = nearW[j];
+      shade(nearDepth[j], ph, lat, p0, p1, bg, latGlow);
+      r += (cr - r) * w;
+      g += (cg - g) * w;
+      b += (cb - b) * w;
+    }
     const o = i * 3;
-    if (d < 0) { out[o] = bg[0]; out[o + 1] = bg[1]; out[o + 2] = bg[2]; continue; }
-    // Colour follows a hole's size on screen (depth minus zoom phase), so the
-    // loop is seamless; the tiniest holes blend into the lattice.
-    const e = d - ph;
-    const deep = clamp((K - 1 - e) / 3);
-    const c = palette(pal, clamp((e - 0.5) / 3.5));
-    const holeK = (0.2 + 0.55 * clamp(1 - (e - 0.5) / 5)) * deep;
-    const latK = params.glow * (1 - deep) * (carpet ? 0.5 : 1);
-    for (let ch = 0; ch < 3; ch++) out[o + ch] = bg[ch] + c[ch] * holeK + lat[ch] * latK;
+    out[o] = r;
+    out[o + 1] = g;
+    out[o + 2] = b;
   }
 }
