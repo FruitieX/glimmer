@@ -185,6 +185,7 @@ fn enabled(p: &Playlist) -> Vec<(usize, PlaylistEntry)> {
 }
 
 /// A fixture playing a playlist (kept in memory: a restart starts afresh).
+#[derive(Clone)]
 pub struct Run {
     pub playlist: String,
     /// The enabled entries when the order was made, to notice edits.

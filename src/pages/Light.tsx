@@ -8,6 +8,7 @@ import {
   Pencil,
   Settings2,
   Sparkles,
+  Square,
   Trash2,
 } from "lucide-react";
 import {
@@ -81,7 +82,7 @@ function Light({
 }: {
   item: ReturnType<typeof useApp>["state"]["fixtures"][number];
 }) {
-  const { state } = useApp();
+  const { state, reload } = useApp();
   const { fixture, layout } = item;
   const send = useFixtureSender(fixture.id);
   const status = useStatus()[fixture.deviceId];
@@ -89,7 +90,7 @@ function Light({
   const effects = state.scripts.filter((s) => s.kind === "effect");
   const script = state.scripts.find((s) => s.id === item.state.look.scriptId);
   const meta = script?.meta;
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const gallery = useGallery("effect", fixture.id);
   const groups = groupByCategory(effects);
   const [category, setCategory] = useState(() =>
@@ -101,6 +102,26 @@ function Light({
   );
   const playlist = state.playlists.find((p) => p.id === item.state.playlistId);
   const scheduled = item.state.scheduled;
+  // The playlist entry on now, and whether its colours or settings were
+  // changed here (which lasts only for this turn unless saved).
+  const entryIndex = item.playing?.entry ?? null;
+  const entry =
+    playlist && entryIndex != null ? playlist.entries[entryIndex] : undefined;
+  const entryLook = entry
+    ? (state.presets.find((p) => p.id === entry.presetId)?.look ?? {
+        scriptId: entry.scriptId,
+        params: entry.params ?? {},
+        colors: entry.colors ?? [],
+      })
+    : undefined;
+  const tweaked =
+    !!entryLook &&
+    entryLook.scriptId === item.state.look.scriptId &&
+    (sameJson(entryLook.params, item.state.look.params) === false ||
+      sameJson(
+        entryLook.colors.map((c) => c.toLowerCase()),
+        item.state.look.colors.map((c) => c.toLowerCase()),
+      ) === false);
   const [settings, setSettings] = useState(false);
 
   // Local copies so sliders feel instant; the server echo replaces them.
@@ -224,7 +245,51 @@ function Light({
                   {dayLabel(scheduled.until)}
                 </Badge>
               )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto"
+                disabled={busy}
+                onClick={() =>
+                  // Picking the effect on now keeps it, without the playlist.
+                  run(() => send({ scriptId: item.state.look.scriptId }))
+                }
+              >
+                <Square size={12} /> Stop playlist
+              </Button>
             </p>
+          )}
+          {playlist && entry && tweaked && entryIndex != null && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-glow/5 px-4 py-2.5 text-xs text-soft">
+              <span className="flex-1">
+                Your changes last until {playlist.name} moves on.
+              </span>
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    const entries = playlist.entries.map((e, i) =>
+                      i === entryIndex
+                        ? {
+                            ...e,
+                            presetId: null,
+                            params: item.state.look.params,
+                            colors: item.state.look.colors,
+                          }
+                        : e,
+                    );
+                    await put(`/playlists/${encodeURIComponent(playlist.id)}`, {
+                      ...playlist,
+                      entries,
+                    });
+                    reload();
+                  }, `Saved to ${playlist.name}`)
+                }
+              >
+                <ListMusic size={13} /> Save to {playlist.name}
+              </Button>
+            </div>
           )}
           {status?.movie && (
             <p className="border-t border-line px-4 py-2.5 text-xs text-muted">
@@ -312,9 +377,9 @@ function Light({
             : null}
           {layout?.points.length && category !== "Playlists"
             ? (groups.find(([c]) => c === category)?.[1] ?? []).map((e) => {
-                // While a playlist plays, picking its effect keeps it instead.
-                const active =
-                  e.id === item.state.look.scriptId && !item.state.playlistId;
+                // The effect on now; while a playlist plays, "Stop playlist"
+                // keeps it instead of tapping it here.
+                const active = e.id === item.state.look.scriptId;
                 return (
                   <EffectCard
                     key={e.id}
@@ -760,6 +825,14 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
             />
             Reverse LED order
           </label>
+          <label className="flex items-center gap-3 text-sm text-soft">
+            <Toggle
+              label="Follow seasonal playlists"
+              checked={draft.seasonal}
+              onChange={(v) => setDraft({ ...draft, seasonal: v })}
+            />
+            Follow seasonal playlists
+          </label>
           {draft.layout.kind === "grid" && (
             <label className="flex items-center gap-3 text-sm text-soft">
               <Toggle
@@ -826,4 +899,19 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
       </Card>
     </Section>
   );
+}
+
+/** Deep equality of plain JSON values, ignoring key order. */
+function sameJson(a: unknown, b: unknown): boolean {
+  const norm = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(norm)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.entries(v as Record<string, unknown>)
+              .sort(([x], [y]) => (x < y ? -1 : 1))
+              .map(([k, x]) => [k, norm(x)]),
+          )
+        : v;
+  return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 }

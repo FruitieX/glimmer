@@ -364,6 +364,8 @@ async fn update_fixture(
     };
     let app = s.app.clone();
     blocking(move || app.sync_device(&device, false)).await?;
+    // Opting out of seasonal playlists ends one that's on right away.
+    s.app.run_schedules(playlist::today())?;
     s.app.changed();
     Ok(Json(body))
 }

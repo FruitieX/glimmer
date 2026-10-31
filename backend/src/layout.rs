@@ -161,6 +161,7 @@ mod tests {
             layout,
             transitions: Default::default(),
             sort: 0,
+            seasonal: true,
         }
     }
 

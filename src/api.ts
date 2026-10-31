@@ -83,7 +83,12 @@ export interface Device {
   preferMovies: boolean;
   allowClearingMovies: boolean;
   info: Gestalt | null;
-  layout: { source: string; coordinates: unknown[] } | null;
+  layout: {
+    source: string;
+    coordinates: unknown[];
+    /** LEDs moved between their neighbours: the mapping put them far away. */
+    repaired?: number[];
+  } | null;
 }
 
 export type LayoutMode =
@@ -112,6 +117,8 @@ export interface Fixture {
     change: TransitionSpec[];
   };
   sort: number;
+  /** Whether seasonal playlists switch this light over when their season starts. */
+  seasonal: boolean;
 }
 
 export interface Look {

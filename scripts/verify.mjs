@@ -325,7 +325,18 @@ try {
   await page.screenshot({ path: `${shots}/playlist-editor.png` });
   await page.keyboard.press("Escape");
 
-  // Picking an effect ends the playlist.
+  // "Stop playlist" keeps the effect on now, without the playlist.
+  await page.goto(`${origin}/lights/Test%20curtain`);
+  await page.getByRole("button", { name: "Stop playlist" }).click();
+  await until(
+    "the playlist to stop",
+    async () => (await light()).state.playlistId === null,
+  );
+  // Picking an effect ends a playlist too.
+  await page.request.post(`${fixtureUrl}/state`, {
+    headers: { Origin: origin },
+    data: { playlist: playlist.id },
+  });
   const effect = await page.request.post(`${fixtureUrl}/state`, {
     headers: { Origin: origin },
     data: { scriptId: "rainbow" },

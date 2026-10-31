@@ -60,6 +60,9 @@ pub struct Fixture {
     pub transitions: Transitions,
     #[serde(default)]
     pub sort: i64,
+    /// Whether seasonal playlists switch this light over when their season starts.
+    #[serde(default = "yes")]
+    pub seasonal: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

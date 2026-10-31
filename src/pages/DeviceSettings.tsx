@@ -637,6 +637,17 @@ function LightsOnString({
           “Read LEDs and mapping” to see them where they hang.
         </p>
       )}
+      {!!device.layout?.repaired?.length && (
+        <p className="text-xs text-muted">
+          The Twinkly mapping put LED
+          {device.layout.repaired.length > 1 ? "s" : ""}{" "}
+          {device.layout.repaired.join(", ")} far from all the others, so{" "}
+          {device.layout.repaired.length > 1 ? "they are" : "it is"} placed
+          between {device.layout.repaired.length > 1 ? "their" : "its"}{" "}
+          neighbours instead. Re-mapping the string in the Twinkly app fixes it
+          for good.
+        </p>
+      )}
 
       <ul className="space-y-1.5">
         {draft.map((r, i) => (

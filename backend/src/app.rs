@@ -115,6 +115,7 @@ pub fn new_fixture(id: &str, device: &Device, start: usize, count: usize, sort: 
         layout: LayoutMode::Device,
         transitions: Default::default(),
         sort,
+        seasonal: true,
     }
 }
 
@@ -395,9 +396,19 @@ impl App {
             return Ok(None);
         };
         let rng = &mut rand::rng();
-        let run = match runs.remove(fixture) {
-            Some(mut run) if run.playlist == playlist_id => run.advance(list, rng).then_some(run),
-            _ => Run::start(list, rng),
+        let own = runs.remove(fixture).filter(|r| r.playlist == playlist_id);
+        // Lights on the same playlist stay in step: one joining it, or one
+        // whose turn ends after another's already moved on, takes that run.
+        let leader = runs
+            .values()
+            .filter(|r| r.playlist == playlist_id)
+            .filter(|r| own.as_ref().is_none_or(|o| r.started > o.started))
+            .max_by_key(|r| r.started)
+            .cloned();
+        let run = match (leader, own) {
+            (Some(run), _) => Some(run),
+            (None, Some(mut run)) => run.advance(list, rng).then_some(run),
+            (None, None) => Run::start(list, rng),
         };
         let Some(mut run) = run else {
             return Ok(None);
@@ -535,7 +546,7 @@ impl App {
                     let covers = playlists
                         .iter()
                         .find(|p| p.id == mark.playlist_id)
-                        .is_some_and(|p| playlist::schedule_covers(p, &f.id, today))
+                        .is_some_and(|p| f.seasonal && playlist::schedule_covers(p, &f.id, today))
                         && mark.until.parse::<NaiveDate>().is_ok_and(|u| today <= u);
                     if covers {
                         state.scheduled = Some(mark);
@@ -565,6 +576,11 @@ impl App {
                         continue;
                     }
                     db::set_schedule_fired(&db, &p.id, &f.id, &start)?;
+                    // An opted-out light lets the start pass, so opting back
+                    // in waits for the next one.
+                    if !f.seasonal {
+                        continue;
+                    }
                     let resume = Selection {
                         look: state.look.clone(),
                         preset_id: state.preset_id.take(),
@@ -1024,5 +1040,62 @@ mod tests {
         );
         // Christmas starts as usual.
         assert_eq!(day(&app, 12, 1).playlist_id.as_deref(), Some("christmas"));
+    }
+
+    #[test]
+    fn lights_on_the_same_playlist_stay_in_step() {
+        let (_dir, app) = app();
+        {
+            let db = app.db().unwrap();
+            let device = db::device(&db, "curtain").unwrap().unwrap();
+            db::save_fixture(
+                &db,
+                &new_fixture("Tree", &device, 10, 0, 2),
+                &FixtureState::default(),
+            )
+            .unwrap();
+        }
+        set(&app, json!({"playlist": "calm", "power": true})).unwrap();
+        app.advance_playlist("Curtain").unwrap();
+        assert_eq!(state(&app).look.script_id, "plasma");
+        // Joining mid-way shows what the other light shows.
+        let tree = app
+            .set_state(
+                "Tree",
+                serde_json::from_value(json!({"playlist": "calm", "power": true})).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(tree.look.script_id, "plasma");
+        // Whichever moves on first, the other follows to the same entry.
+        app.advance_playlist("Tree").unwrap();
+        app.advance_playlist("Curtain").unwrap();
+        let tree = app.fixture("Tree").unwrap().1;
+        assert_eq!(tree.look.script_id, "aurora");
+        assert_eq!(state(&app).look.script_id, "aurora");
+    }
+
+    #[test]
+    fn lights_can_opt_out_of_seasons() {
+        let (_dir, app) = app();
+        set(&app, json!({"scriptId": "rainbow"})).unwrap();
+        let opt_out = |seasonal: bool| {
+            let db = app.db().unwrap();
+            let (mut f, s) = db::fixture(&db, "Curtain").unwrap().unwrap();
+            f.seasonal = seasonal;
+            db::save_fixture(&db, &f, &s).unwrap();
+        };
+        opt_out(false);
+        assert_eq!(day(&app, 12, 1).playlist_id, None);
+        // Opting back in waits for the next start; opting out mid-season
+        // goes back to what the light showed before.
+        opt_out(true);
+        assert_eq!(
+            day(&app, 12, 1).playlist_id,
+            None,
+            "this start already passed"
+        );
+        assert_eq!(day(&app, 12, 28).playlist_id.as_deref(), Some("new-year"));
+        opt_out(false);
+        assert_eq!(day(&app, 12, 29).look.script_id, "rainbow");
     }
 }
