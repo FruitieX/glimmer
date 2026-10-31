@@ -185,6 +185,14 @@ try {
   await page.getByText("Try settings").waitFor();
   await page.getByRole("button", { name: "View the code" }).waitFor();
   await page.screenshot({ path: `${shots}/editor-phone.png`, fullPage: true });
+  // Installed from the browser, the app opens in its own window.
+  const manifest = await page.request.get(`${origin}/manifest.webmanifest`);
+  assert.equal((await manifest.json()).display, "standalone");
+  assert.ok(
+    (await page.request.get(`${origin}/icon-512.png`)).ok(),
+    "app icon",
+  );
+
   // Only cards on screen get thumbnails streamed.
   const thumbs = new Set();
   page.on("websocket", (ws) => {
