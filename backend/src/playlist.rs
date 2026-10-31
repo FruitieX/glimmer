@@ -223,11 +223,19 @@ impl Run {
     }
 
     /// Whether the current entry is gone from (or disabled in) `playlist`.
+    /// Changed settings don't count: the entry keeps playing its turn.
     pub fn current_removed(&self, playlist: &Playlist) -> bool {
+        let Some((i, c)) = self
+            .entries
+            .get(*self.seq.get(self.pos).unwrap_or(&usize::MAX))
+        else {
+            return true;
+        };
         playlist.id != self.playlist
-            || self
-                .current()
-                .is_none_or(|c| !playlist.entries.iter().any(|e| e.enabled && e == c))
+            || playlist
+                .entries
+                .get(*i)
+                .is_none_or(|e| !e.enabled || e.script_id != c.script_id)
     }
 
     pub fn duration_s(&self) -> f64 {
@@ -252,9 +260,20 @@ impl Run {
         }
         if entries != self.entries || playlist.shuffle != self.shuffle {
             // Carry on after the current entry in the edited list.
-            let current = self.current().cloned();
+            let current = self
+                .seq
+                .get(self.pos)
+                .and_then(|&k| self.entries.get(k))
+                .cloned();
             let current_at = self.seq.get(self.pos).copied().unwrap_or(0);
-            let at = current.and_then(|c| entries.iter().position(|(_, e)| *e == c));
+            // The same entry, even if its settings were changed.
+            let at = current.and_then(|(ci, c)| {
+                entries.iter().position(|(_, e)| *e == c).or_else(|| {
+                    entries
+                        .iter()
+                        .position(|(i, e)| *i == ci && e.script_id == c.script_id)
+                })
+            });
             self.seq = cycle(n, playlist.shuffle, at, rng);
             self.pos = if playlist.shuffle {
                 0
@@ -613,6 +632,23 @@ mod tests {
         p.entries[2].enabled = false;
         assert!(!run.advance(&p, &mut rng), "nothing left to play");
         assert!(Run::start(&p, &mut rng).is_none());
+    }
+
+    #[test]
+    fn changed_settings_keep_the_entry_playing() {
+        let mut rng = rand::rng();
+        let mut p = list("a", &["x", "y", "z"], false);
+        let mut run = Run::start(&p, &mut rng).unwrap();
+        run.advance(&p, &mut rng);
+        // Colours saved into the playing entry ("y") don't cut its turn short,
+        // and the next turn still moves on.
+        p.entries[1].colors = vec!["#ff0000".into()];
+        assert!(!run.current_removed(&p));
+        run.advance(&p, &mut rng);
+        assert_eq!(script(&run), "z");
+        run.advance(&p, &mut rng);
+        run.advance(&p, &mut rng);
+        assert_eq!(run.current().unwrap().colors, ["#ff0000"]);
     }
 
     #[test]

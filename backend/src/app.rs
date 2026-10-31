@@ -292,7 +292,10 @@ impl App {
         let device = db::device(&*self.db()?, id)?.ok_or("no such device")?;
         let client = Client::new(&device.ip);
         let gestalt = client.gestalt()?;
-        let layout = client.layout().ok();
+        let layout = client.layout().ok().map(|mut l| {
+            crate::layout::repair_strays(&mut l);
+            l
+        });
         let mut device = device;
         let bytes = gestalt.bytes_per_led();
         if device.output.bytes_per_led() != bytes {
@@ -712,6 +715,20 @@ impl App {
             }
             if let Some(b) = patch.brightness {
                 state.brightness = b.clamp(0.0, 1.0);
+            }
+            // Picking the playlist that's already playing (homectl resending
+            // its scene, say) carries on rather than starting over.
+            if picked_playlist.is_some()
+                && picked_playlist == state.playlist_id
+                && was_on
+                && patch.power != Some(false)
+                && self
+                    .runs
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .contains_key(id)
+            {
+                picked_playlist = None;
             }
             if let Some(p) = &picked_playlist {
                 state.playlist_id = Some(p.clone());

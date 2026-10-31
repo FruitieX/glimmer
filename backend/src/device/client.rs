@@ -56,6 +56,10 @@ pub struct Layout {
     #[serde(default)]
     pub synthesized: bool,
     pub coordinates: Vec<Point>,
+    /// LEDs whose mapped position was far from every other LED (a mapping
+    /// glitch); they were moved between their neighbours along the string.
+    #[serde(default)]
+    pub repaired: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
