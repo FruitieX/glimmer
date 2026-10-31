@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -57,7 +57,42 @@ export function useThumbnails(fixtureId?: string) {
   return { layout, frames: useGallery("effect", light?.fixture.id) };
 }
 
-/** A playlist to pick or open, showing its first enabled effect. */
+/**
+ * Which of a playlist's effects to preview: what a light playing it shows,
+ * otherwise a different one every few seconds, starting at a random one
+ * when the playlist shuffles.
+ */
+export function usePreviewEntry(
+  playlistId: string | undefined,
+  entries: PlaylistEntry[],
+  shuffle: boolean,
+): string | undefined {
+  const { state } = useApp();
+  const on = entries.filter((e) => e.enabled);
+  const n = on.length;
+  const [step, setStep] = useState(() =>
+    shuffle ? Math.floor(Math.random() * 1e6) : 0,
+  );
+  useEffect(() => {
+    if (n < 2) return;
+    const timer = setInterval(
+      () =>
+        setStep((s) =>
+          // A random other entry when shuffling, the next one otherwise.
+          shuffle ? s + 1 + Math.floor(Math.random() * (n - 1)) : s + 1,
+        ),
+      6000,
+    );
+    return () => clearInterval(timer);
+  }, [n, shuffle]);
+  const playing = state.fixtures.find(
+    (f) => playlistId && f.state.playlistId === playlistId && f.state.power,
+  );
+  if (playing) return playing.state.look.scriptId;
+  return n ? on[step % n].scriptId : undefined;
+}
+
+/** A playlist to pick or open, previewing its effects in turn. */
 export function PlaylistCard({
   playlist,
   frames,
@@ -72,7 +107,12 @@ export function PlaylistCard({
   onClick: () => void;
 }) {
   const { state } = useApp();
-  const on = playlist.entries.filter((e) => e.enabled);
+  const enabledCount = playlist.entries.filter((e) => e.enabled).length;
+  const preview = usePreviewEntry(
+    playlist.id,
+    playlist.entries,
+    playlist.shuffle,
+  );
   const playingOn = state.fixtures
     .filter((f) => f.state.playlistId === playlist.id)
     .map((f) => f.fixture.name);
@@ -86,9 +126,9 @@ export function PlaylistCard({
           : "bg-panel/80 ring-line hover:ring-glow/30",
       )}
     >
-      {on[0] ? (
+      {preview ? (
         <Thumb
-          scriptId={on[0].scriptId}
+          scriptId={preview}
           frames={frames}
           layout={layout}
           className="h-28"
@@ -104,7 +144,7 @@ export function PlaylistCard({
           {active && <Check size={16} className="shrink-0 text-glow" />}
         </div>
         <p className="mt-1 truncate text-xs text-muted">
-          {on.length} {on.length === 1 ? "effect" : "effects"}
+          {enabledCount} {enabledCount === 1 ? "effect" : "effects"}
           {playlist.season && ` · ${seasonLabel(playlist.season)}`}
         </p>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -314,7 +354,7 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
     )
       reload();
   };
-  const first = entries.find((e) => e.enabled);
+  const first = usePreviewEntry(playlist?.id, entries, shuffle);
   const liveSource = useCallback(() => frames0.get(lightId), [lightId]);
 
   return (
@@ -357,7 +397,7 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
             </div>
           ) : first ? (
             <Thumb
-              scriptId={first.scriptId}
+              scriptId={first}
               frames={frames}
               layout={layout}
               className="h-56"
