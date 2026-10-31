@@ -80,6 +80,22 @@ pub fn device(db: &Connection, id: &str) -> Result<Option<Device>> {
     .transpose()
 }
 
+/// Repairs stray points in layouts stored before strays were repaired on
+/// reading them from the string.
+pub fn repair_layouts(db: &Connection) -> Result<()> {
+    for mut d in devices(db)? {
+        let Some(layout) = &mut d.layout else {
+            continue;
+        };
+        let before = layout.coordinates.clone();
+        crate::layout::repair_strays(layout);
+        if layout.coordinates != before {
+            save_device(db, &d)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn save_device(db: &Connection, d: &Device) -> Result<()> {
     db.execute(
         "INSERT INTO devices(id,data) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET data=excluded.data",

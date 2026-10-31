@@ -146,6 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     db::sync_builtins(&conn)?;
     db::seed_playlists(&conn)?;
+    db::repair_layouts(&conn)?;
 
     let origin = env("GLIMMER_ORIGIN").unwrap_or("http://localhost:3110".into());
     let origin = origin.trim_end_matches('/').to_string();
