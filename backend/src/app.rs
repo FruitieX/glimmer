@@ -981,4 +981,24 @@ mod tests {
         drop(db);
         assert_eq!(day(&app, 12, 3).playlist_id, None);
     }
+
+    #[test]
+    fn schedules_added_mid_season_wait_for_their_next_start() {
+        let (_dir, app) = app();
+        set(&app, json!({"scriptId": "rainbow"})).unwrap();
+        let db = app.db().unwrap();
+        for p in db::playlists(&db).unwrap() {
+            db::skip_running_occurrence(&db, &p, NaiveDate::from_ymd_opt(2026, 10, 31).unwrap())
+                .unwrap();
+        }
+        drop(db);
+        // Autumn and Halloween were already running: nothing changes.
+        let s = day(&app, 10, 31);
+        assert_eq!(
+            (s.playlist_id, s.look.script_id.as_str()),
+            (None, "rainbow")
+        );
+        // Christmas starts as usual.
+        assert_eq!(day(&app, 12, 1).playlist_id.as_deref(), Some("christmas"));
+    }
 }

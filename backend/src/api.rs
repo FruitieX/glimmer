@@ -685,6 +685,7 @@ async fn create_playlist(
         let db = s.app.db()?;
         let playlist = checked_playlist(&db, None, body)?;
         db::save_playlist(&db, &playlist)?;
+        db::skip_running_occurrence(&db, &playlist, playlist::today())?;
         playlist
     };
     s.app.run_schedules(playlist::today())?;
@@ -705,6 +706,7 @@ async fn update_playlist(
         let db = s.app.db()?;
         let playlist = checked_playlist(&db, Some(&id), body)?;
         db::save_playlist(&db, &playlist)?;
+        db::skip_running_occurrence(&db, &playlist, playlist::today())?;
         playlist
     };
     s.app.run_schedules(playlist::today())?;

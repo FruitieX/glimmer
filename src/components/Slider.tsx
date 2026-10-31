@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   value: number;
@@ -39,6 +39,20 @@ export function Slider({
     dragging: boolean;
     id: number;
   } | null>(null);
+  // While dragging (and briefly after), show the dragged value: echoes of
+  // earlier values from the server would otherwise pull the thumb back.
+  const [held, setHeld] = useState<number | null>(null);
+  const release = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(release.current), []);
+  const hold = (v: number) => {
+    clearTimeout(release.current);
+    setHeld(v);
+  };
+  const letGo = () => {
+    clearTimeout(release.current);
+    release.current = setTimeout(() => setHeld(null), 1000);
+  };
+  if (held !== null) value = held;
   const last = useRef(value);
   last.current = value;
   const span = max - min || 1;
@@ -58,6 +72,7 @@ export function Slider({
     return quantise(min + Math.min(1, Math.max(0, p)) * span);
   };
   const set = (v: number) => {
+    hold(v);
     if (v !== last.current) {
       last.current = v;
       onChange(v);
@@ -112,10 +127,12 @@ export function Slider({
           e.currentTarget.releasePointerCapture?.(e.pointerId);
           onCommit?.(last.current);
         }
+        letGo();
       }}
       onPointerCancel={() => {
         if (gesture.current?.dragging) onCommit?.(last.current);
         gesture.current = null;
+        letGo();
       }}
       onKeyDown={(e) => {
         if (disabled) return;
@@ -135,6 +152,7 @@ export function Slider({
           const v = quantise(keys[e.key]);
           set(v);
           onCommit?.(v);
+          letGo();
         }
       }}
     >

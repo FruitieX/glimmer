@@ -6,6 +6,7 @@ use crate::{
     model::{Device, Fixture, FixtureState, Playlist, Preset, ScriptKind, ScriptSource},
     script::{Meta, Scripts},
 };
+use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use std::path::Path;
@@ -229,7 +230,9 @@ pub fn seed_playlists(db: &Connection) -> Result<()> {
         if !seeded {
             if existing.is_none() {
                 sort += 1;
-                save_playlist(db, &b.playlist(&effects, sort))?;
+                let p = b.playlist(&effects, sort);
+                save_playlist(db, &p)?;
+                skip_running_occurrence(db, &p, crate::playlist::today())?;
             }
             db.execute("INSERT INTO seeded(id) VALUES(?1)", [&key])
                 .map_err(err)?;
@@ -251,6 +254,17 @@ pub fn seed_playlists(db: &Connection) -> Result<()> {
 }
 
 /// The start of the window a playlist's schedule last put on a fixture.
+/// Schedules start lights only when their window begins: a playlist added
+/// or edited mid-season waits for its next start instead of firing now.
+pub fn skip_running_occurrence(db: &Connection, p: &Playlist, today: NaiveDate) -> Result<()> {
+    if let Some((start, _)) = p.season.as_ref().and_then(|s| s.occurrence(today)) {
+        for (f, _) in fixtures(db)? {
+            set_schedule_fired(db, &p.id, &f.id, &start.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 pub fn schedule_fired(db: &Connection, playlist: &str, fixture: &str) -> Result<Option<String>> {
     db.query_row(
         "SELECT start FROM schedule_fired WHERE playlist_id=?1 AND fixture_id=?2",
