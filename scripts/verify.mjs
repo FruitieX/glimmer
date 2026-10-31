@@ -285,15 +285,15 @@ try {
     "an own list",
     async () => (await getFixture()).transitions.on?.length === 1,
   );
-  // Add one to the "Turning on" list with the picker.
+  // Add two to the "Turning on" list at once with the picker.
   await page.getByRole("button", { name: "Add transition" }).first().click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: /^Starburst/ })
-    .click();
+  const picker = page.getByRole("dialog");
+  await picker.getByRole("button", { name: /^Starburst/ }).click();
+  await picker.getByRole("button", { name: /^Melt/ }).click();
+  await picker.getByRole("button", { name: "Add 2 transitions" }).click();
   await until(
-    "the added transition",
-    async () => (await getFixture()).transitions.on.length === 2,
+    "the added transitions",
+    async () => (await getFixture()).transitions.on.length === 3,
   );
   await page.getByText(/Shuffles between these/).waitFor();
   await page
@@ -309,6 +309,11 @@ try {
   await delay(1200);
   await page.screenshot({ path: `${shots}/transition-picker.png` });
   await page.keyboard.press("Escape");
+  // "Remove all" asks first; saying no keeps the list.
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "Remove all" }).first().click();
+  await delay(300);
+  assert.equal((await getFixture()).transitions.on.length, 3);
 
   // Positions and effect size save from the light's settings page.
   {
@@ -330,7 +335,7 @@ try {
     });
     assert.deepEqual(
       (await getFixture()).transitions.on.length,
-      2,
+      3,
       "saving the layout keeps the light's transitions",
     );
     const back = await page.request.put(curtainUrl, {

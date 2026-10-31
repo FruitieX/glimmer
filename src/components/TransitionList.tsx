@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Plus, Shuffle, X } from "lucide-react";
+import { Check, ChevronDown, Plus, Shuffle, X } from "lucide-react";
 import { paramValues, type FixtureLayout, type TransitionSpec } from "../api";
 import type { Gallery } from "../live";
 import { useApp } from "../main";
@@ -34,6 +34,10 @@ export function TransitionList({
   // The item being replaced, or "new" while adding.
   const [picking, setPicking] = useState<number | "new" | null>(null);
   const [open, setOpen] = useState<number | null>(null);
+  // Transitions ticked while adding; several can be added at once.
+  const [chosen, setChosen] = useState<string[]>([]);
+  const inList = new Set(items.map((x) => x.scriptId));
+  const addable = transitions.filter((t) => !inList.has(t.id));
   const update = (i: number, s: TransitionSpec) =>
     onChange(items.map((x, j) => (j === i ? s : x)));
 
@@ -134,19 +138,119 @@ export function TransitionList({
           same one twice in a row.
         </p>
       )}
-      <Button size="sm" onClick={() => setPicking("new")}>
+      <Button
+        size="sm"
+        onClick={() => {
+          setChosen([]);
+          setPicking("new");
+        }}
+      >
         <Plus size={14} /> Add transition
       </Button>
+      {items.length > 1 && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-2"
+          onClick={() => {
+            if (
+              window.confirm(
+                `Remove all ${items.length} transitions from ${label}? With none, it changes instantly.`,
+              )
+            )
+              onChange([]);
+          }}
+        >
+          <X size={14} /> Remove all
+        </Button>
+      )}
 
       <Dialog
         open={picking !== null}
         onOpenChange={(v) => !v && setPicking(null)}
-        title={picking === "new" ? "Add a transition" : "Change transition"}
-        description={label}
+        title={picking === "new" ? "Add transitions" : "Change transition"}
+        description={
+          picking === "new"
+            ? `${label}: pick one or more; with several, one is picked at random each time.`
+            : label
+        }
         wide
       >
+        {picking === "new" && (
+          <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-2 bg-panel px-1 py-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={addable.length === 0}
+              onClick={() =>
+                setChosen(
+                  chosen.length === addable.length
+                    ? []
+                    : addable.map((t) => t.id),
+                )
+              }
+            >
+              {chosen.length === addable.length && addable.length > 0
+                ? "Select none"
+                : "Select all"}
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              className="ml-auto"
+              disabled={chosen.length === 0}
+              onClick={() => {
+                const ms = items.at(-1)?.durationMs ?? defaultMs;
+                onChange([
+                  ...items,
+                  ...chosen.map((id) => ({
+                    scriptId: id,
+                    durationMs: ms,
+                    params: {},
+                  })),
+                ]);
+                setPicking(null);
+              }}
+            >
+              <Plus size={14} />
+              {chosen.length > 1
+                ? `Add ${chosen.length} transitions`
+                : "Add transition"}
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {transitions.map((t) => {
+            if (picking === "new") {
+              const already = inList.has(t.id);
+              const ticked = chosen.includes(t.id);
+              return (
+                <EffectCard
+                  key={t.id}
+                  script={t}
+                  frames={frames}
+                  layout={layout}
+                  active={ticked}
+                  badge={
+                    already ? (
+                      <span className="shrink-0 text-xs text-muted">
+                        In list
+                      </span>
+                    ) : ticked ? (
+                      <Check size={16} className="shrink-0 text-glow" />
+                    ) : undefined
+                  }
+                  onClick={() =>
+                    !already &&
+                    setChosen(
+                      ticked
+                        ? chosen.filter((x) => x !== t.id)
+                        : [...chosen, t.id],
+                    )
+                  }
+                />
+              );
+            }
             const current =
               typeof picking === "number" ? items[picking] : undefined;
             return (
@@ -157,16 +261,7 @@ export function TransitionList({
                 layout={layout}
                 active={current?.scriptId === t.id}
                 onClick={() => {
-                  if (picking === "new" || current === undefined) {
-                    onChange([
-                      ...items,
-                      {
-                        scriptId: t.id,
-                        durationMs: items.at(-1)?.durationMs ?? defaultMs,
-                        params: {},
-                      },
-                    ]);
-                  } else if (current.scriptId !== t.id) {
+                  if (current && current.scriptId !== t.id) {
                     update(picking as number, {
                       ...current,
                       scriptId: t.id,
