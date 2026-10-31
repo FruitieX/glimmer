@@ -307,6 +307,10 @@ fn check_range(device: &Device, f: &Fixture) -> std::result::Result<(), String> 
     if f.count == 0 {
         return Err("A light needs at least one LED.".into());
     }
+    let (lo, hi) = (crate::layout::MIN_SCALE, crate::layout::MAX_SCALE);
+    if !(lo..=hi).contains(&f.scale) {
+        return Err(format!("The effect size must be between {lo} and {hi}."));
+    }
     Ok(())
 }
 

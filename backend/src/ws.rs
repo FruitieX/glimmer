@@ -101,7 +101,7 @@ pub async fn preview(
 }
 
 /// A preview request with the LED positions to render it on.
-type Job = (PreviewRequest, Option<(Vec<[f32; 3]>, f32)>);
+type Job = (PreviewRequest, Option<layout::FixtureLayout>);
 
 enum ToClient {
     Text(String),
@@ -123,8 +123,7 @@ async fn preview_socket(s: Server, socket: WebSocket) {
                                 let db = s.app.db().ok()?;
                                 let (f, _) = db::fixture(&db, id).ok()??;
                                 let d = db::device(&db, &f.device_id).ok()??;
-                                let l = layout::fixture_layout(&d, &f);
-                                Some((l.points, l.aspect))
+                                Some(layout::fixture_layout(&d, &f))
                             });
                             if req_tx.send((req, layout)).is_err() {
                                 break;
@@ -150,11 +149,11 @@ async fn preview_socket(s: Server, socket: WebSocket) {
     }
 }
 
-fn grid() -> (Vec<[f32; 3]>, f32) {
+fn grid() -> layout::FixtureLayout {
     let points = (0..210)
         .map(|i| [(i / 21) as f32 / 9.0, 1.0 - (i % 21) as f32 / 20.0, 0.5])
         .collect();
-    (points, 1.0)
+    layout::FixtureLayout::plain(points, 1.0)
 }
 
 fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClient>) {
@@ -162,7 +161,7 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
     let mut serial = 0u64;
     let mut keys: Vec<String> = vec![];
     // The LED positions and colour slot defaults of the running preview.
-    let mut current_points: Option<Vec<[f32; 3]>> = None;
+    let mut current_layout: Option<layout::FixtureLayout> = None;
     let mut current_slots: Vec<String> = vec![];
     let mut current: Option<(PreviewRequest, usize, Instant)> = None;
     let mut out = vec![];
@@ -186,7 +185,7 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
                 if req.source == cur.source
                     && req.kind == cur.kind
                     && req.fixture_id == cur.fixture_id
-                    && layout.as_ref().map(|l| &l.0) == current_points.as_ref() =>
+                    && layout == current_layout =>
             {
                 let slots = &current_slots;
                 let colors: Vec<Rgb> = (0..req.colors.len().max(slots.len()))
@@ -218,9 +217,9 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
             }
             let key = format!("preview{serial}");
             keys.push(key.clone());
-            let layout_points = layout.as_ref().map(|l| l.0.clone());
-            let (points, aspect) = layout.unwrap_or_else(grid);
-            let n = points.len();
+            let requested = layout.clone();
+            let l = layout.unwrap_or_else(grid);
+            let n = l.points.len();
             let layout_id = format!("l{serial}");
             let colors_of = |meta: &crate::script::Meta| -> Vec<Rgb> {
                 let slots = req.colors.len().max(meta.colors.len());
@@ -239,9 +238,13 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
                     .collect()
             };
             let result = (|| -> Result<crate::script::Meta, String> {
-                scripts.layout(&layout_id, &points, aspect)?;
+                scripts.fixture_layout(&layout_id, &l)?;
                 let meta = scripts.register(&key, &req.source)?;
-                scripts.create("main", &key, &layout_id, &req.params, &colors_of(&meta))?;
+                let main_layout = match req.kind {
+                    ScriptKind::Transition => Scripts::transition_layout(&layout_id),
+                    _ => layout_id.clone(),
+                };
+                scripts.create("main", &key, &main_layout, &req.params, &colors_of(&meta))?;
                 if req.kind == ScriptKind::Transition {
                     for (inst, id) in [("from", "rainbow"), ("to", "twinkle")] {
                         let src = crate::builtin::source(id).unwrap_or_default();
@@ -260,14 +263,14 @@ fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClien
             })();
             match result {
                 Ok(meta) => {
-                    if !send_text(json!({"type": "meta", "meta": meta, "points": points})) {
+                    if !send_text(json!({"type": "meta", "meta": meta, "points": l.points})) {
                         return;
                     }
                     out = vec![0.0; n * 3];
                     a = vec![0.0; n * 3];
                     b = vec![0.0; n * 3];
                     current_slots = meta.colors.iter().map(|c| c.default.clone()).collect();
-                    current_points = layout_points;
+                    current_layout = requested;
                     current = Some((req, n, Instant::now()));
                 }
                 Err(e) => {
@@ -350,7 +353,7 @@ type GalleryRun = (ScriptKind, Vec<(String, String)>, usize, Instant);
 type GalleryJob = (
     ScriptKind,
     Vec<crate::model::ScriptSource>,
-    (Vec<[f32; 3]>, f32),
+    layout::FixtureLayout,
 );
 
 enum GalleryMsg {
@@ -394,8 +397,7 @@ async fn gallery_socket(s: Server, socket: WebSocket) {
                             .and_then(|id| {
                                 let (f, _) = db::fixture(&db, id).ok()??;
                                 let d = db::device(&db, &f.device_id).ok()??;
-                                let l = layout::fixture_layout(&d, &f);
-                                Some((l.points, l.aspect))
+                                Some(layout::fixture_layout(&d, &f))
                             })
                             .unwrap_or_else(grid);
                         Some((req.kind, sources, layout))
@@ -431,12 +433,12 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryMsg>, tx: tokio::sync::mpsc::Sender<
                 Err(mpsc::TryRecvError::Disconnected) => return,
             }
         }
-        if let Some((kind, sources, (points, aspect))) = latest {
+        if let Some((kind, sources, l)) = latest {
             // A fresh runtime per request keeps old modules from piling up.
             let Ok(rt) = Scripts::new() else { return };
-            let n = points.len();
+            let n = l.points.len();
             let mut ready = vec![];
-            if rt.layout("l", &points, aspect).is_ok() {
+            if rt.fixture_layout("l", &l).is_ok() {
                 let defaults = |m: &crate::script::Meta| -> Vec<Rgb> {
                     m.colors
                         .iter()
@@ -451,11 +453,15 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryMsg>, tx: tokio::sync::mpsc::Sender<
                         }
                     }
                 }
+                let on = match kind {
+                    ScriptKind::Transition => Scripts::transition_layout("l"),
+                    _ => "l".to_string(),
+                };
                 for source in sources {
                     let key = source.key();
                     if let Ok(m) = rt.register(&key, &source.source)
                         && rt
-                            .create(&key, &key, "l", &json!({}), &defaults(&m))
+                            .create(&key, &key, &on, &json!({}), &defaults(&m))
                             .is_ok()
                     {
                         ready.push((source.id.clone(), key));

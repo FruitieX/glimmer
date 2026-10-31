@@ -62,18 +62,25 @@ export function render(ctx, state) {
 
 ### `ctx`
 
-| Field         | Meaning                                                                                                                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `n`           | Number of LEDs in the fixture.                                                                                                                                                   |
-| `x`, `y`, `z` | `Float32Array`s of LED positions, each normalised to 0..1 across the fixture: `x` left→right, `y` bottom→top, `z` back→front. Flat or unmapped fixtures have 0.5 on unused axes. |
-| `u`           | `Float32Array`, position along the wire, 0 at the first LED and 1 at the last.                                                                                                   |
-| `aspect`      | Width / height of the fixture before normalisation.                                                                                                                              |
-| `spacing`     | Typical distance between neighbouring LEDs in the same 0..1 units, e.g. for edges one LED wide.                                                                                  |
-| `t`           | Seconds since the effect started.                                                                                                                                                |
-| `dt`          | Seconds since the previous frame.                                                                                                                                                |
-| `params`      | Current parameter values (defaults filled in).                                                                                                                                   |
-| `colors`      | Current colours, `[r, g, b]` arrays in 0..1, one per slot in `meta.colors`.                                                                                                      |
-| `out`         | `Float32Array` of length `n * 3` to fill with `r, g, b` per LED, 0..1. It is cleared to black before every call.                                                                 |
+| Field         | Meaning                                                                                                                                                                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `n`           | Number of LEDs in the fixture.                                                                                                                                                                                                                  |
+| `x`, `y`, `z` | `Float32Array`s of LED positions, each normalised to 0..1 across the fixture: `x` left→right, `y` bottom→top, `z` back→front. Flat or unmapped fixtures have 0.5 on unused axes. With a light's effect size (below) they can reach beyond 0..1. |
+| `u`           | `Float32Array`, position along the light, 0 at one end and 1 at the other: the LED order, or the physical order on lights laid out along their length (see below).                                                                              |
+| `aspect`      | Width / height of the fixture before normalisation.                                                                                                                                                                                             |
+| `spacing`     | Typical distance between neighbouring LEDs in the same units as `x`/`y`, e.g. for edges one LED wide.                                                                                                                                           |
+| `t`           | Seconds since the effect started.                                                                                                                                                                                                               |
+| `dt`          | Seconds since the previous frame.                                                                                                                                                                                                               |
+| `params`      | Current parameter values (defaults filled in).                                                                                                                                                                                                  |
+| `colors`      | Current colours, `[r, g, b]` arrays in 0..1, one per slot in `meta.colors`.                                                                                                                                                                     |
+| `out`         | `Float32Array` of length `n * 3` to fill with `r, g, b` per LED, 0..1. It is cleared to black before every call.                                                                                                                                |
+
+### Lights of every shape and size
+
+Size features relative to `ctx.spacing` or to the 0..1 world, and don't assume a particular number or density of LEDs:
+
+- A light set to "Along its length" (a string zigzagging up a banister, say) arrives as a clean strip: `x` and `u` are each LED's place along its main direction (bottom to top, or left to right when level), `y` and `z` are a flat 0.5, `aspect` is large, and neighbouring LEDs in `u` aren't neighbours in index. Work along `u` (or `x`) there, not along the LED index.
+- Each light has an effect size (0.25–4) that zooms the positions about the centre: at 2, `x`, `y`, `z`, `u` and `spacing` are halved around 0.5 (features look twice as big); at 0.5 they double, so LEDs lie outside 0..1 and more of the effect shows. `aspect` stays. Effects that look things up by position (grids, cells, lookup tables) must clamp or wrap it, e.g. with `tile`. Transitions always see the light at size 1.
 
 Values are perceptual (like CSS colours); the app applies brightness, gamma, white balance and the RGBW white channel afterwards. Keep `render` fast: a frame should take well under a millisecond for a few hundred LEDs. Allocate arrays in `setup`, not per frame. A script that runs longer than 250 ms is stopped.
 
@@ -87,7 +94,7 @@ Set `meta.category` to one of: `Basics`, `Gradients & patterns`, `Plasma & flow`
 
 LEDs are few and far apart, so anything sharp (a comet's head, a bar's edge, a dot) jumps from LED to LED and steps visibly as it moves. There are two ways to avoid that:
 
-- Draw soft shapes yourself: fade brightness over about one `ctx.spacing` (or one LED along `u`, which is `1 / (n - 1)`), for example `smoothstep(edge - ctx.spacing, edge + ctx.spacing, x[i])` instead of `x[i] > edge`.
+- Draw soft shapes yourself: fade brightness over about one `ctx.spacing` (or one LED along `u`, about `1 / (n - 1)` at effect size 1), for example `smoothstep(edge - ctx.spacing, edge + ctx.spacing, x[i])` instead of `x[i] > edge`.
 - Or set `meta.antialias: true`. The app then renders every frame four times with the LED positions (`x`, `y`, `u`) moved slightly within each LED's area and averages the results, so a hard edge covers an LED partially as it moves. This costs four renders per frame. Only use it for effects whose `render` is a pure function of `ctx` (no state changed between frames).
 
 ### Simulations and state
@@ -162,6 +169,7 @@ Each light picks its transitions in the app; a slot (turning on, turning off, ch
 
 - `PI`, `TAU`
 - `clamp(v, lo = 0, hi = 1)`, `fract(v)`, `lerp(a, b, t)`, `smoothstep(e0, e1, v)`
+- `tile(v)`: a position outside 0..1 wrapped back into it (0..1 itself unchanged), for repeating a grid beyond the edges
 - `mix(c1, c2, t)`, `scale(c, k)`: colours as `[r, g, b]`
 - `hsv(h, s = 1, v = 1)`: hue 0..1 (wraps); returns `[r, g, b]`
 - `hex("#rrggbb")` → `[r, g, b]`
@@ -169,6 +177,6 @@ Each light picks its transitions in the app; a slot (turning on, turning off, ch
 - `hash(i, seed = 0)`: deterministic pseudo-random number in 0..1 for an integer
 - `noise(x, y = 0, z = 0)`: smooth Perlin noise, roughly -1..1
 - `ease.linear`, `ease.in`, `ease.out`, `ease.inOut`
-- `sampler(ctx)`: reads a frame (an `n * 3` array, such as a transition's `a` or `b`) at any position by blending the nearby LEDs; at an LED's own position it gives exactly that LED. Create it in `setup`; it returns `{ line, sx, sy, su, at(frame, x, y, rgb), along(frame, u, rgb) }`. `at` and `along` write the colour into `rgb` (an `[r, g, b]` array you reuse) and return it; positions outside 0..1 are clamped. `line` is true when the fixture is a line, `sx`/`sy` are the typical gaps between neighbouring LEDs sideways and up/down, and `su` is one LED along `u`. Each read costs about as much as a few dozen arithmetic operations, so read each frame at most two or three times per LED.
+- `sampler(ctx)`: reads a frame (an `n * 3` array, such as a transition's `a` or `b`) at any position by blending the nearby LEDs; at an LED's own position it gives exactly that LED. Create it in `setup`; it returns `{ line, sx, sy, su, at(frame, x, y, rgb), along(frame, u, rgb) }`. `at` and `along` write the colour into `rgb` (an `[r, g, b]` array you reuse) and return it; positions outside the light are clamped. `line` is true when the fixture is a line, `sx`/`sy` are the typical gaps between neighbouring LEDs sideways and up/down, and `su` is one LED along `u` (`along` blends the LEDs nearest in `u`, whatever their index). Each read costs about as much as a few dozen arithmetic operations, so read each frame at most two or three times per LED.
 
 `Math.random()` works, but `hash` gives repeatable patterns and keeps loops seamless.

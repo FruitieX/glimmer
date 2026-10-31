@@ -822,6 +822,7 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
                 { value: "device", label: "Mapped in the Twinkly app" },
                 { value: "linear", label: "A straight line" },
                 { value: "grid", label: "Hanging strands" },
+                { value: "along", label: "Along its length" },
               ]}
               onChange={(v) => {
                 const layout: LayoutMode =

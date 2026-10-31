@@ -5,6 +5,7 @@
 //! from a single thread. Every call into JavaScript runs under a time budget,
 //! so a runaway script raises an error instead of stalling the lights.
 
+use crate::layout::FixtureLayout;
 use rquickjs::{Context, Ctx, Function, Module, Object, Runtime, TypedArray, Value};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -207,12 +208,35 @@ impl Scripts {
         let _ = self.run(|ctx| Self::host(ctx, "unregister")?.1.call::<_, ()>((key,)));
     }
 
-    /// Positions are normalised to 0..1; `aspect` is width / height.
+    /// Positions are normalised to 0..1, in LED order; `aspect` is width / height.
     pub fn layout(&self, id: &str, points: &[[f32; 3]], aspect: f32) -> Result<(), String> {
-        let xs: Vec<f32> = points.iter().map(|p| p[0]).collect();
-        let ys: Vec<f32> = points.iter().map(|p| p[1]).collect();
-        let zs: Vec<f32> = points.iter().map(|p| p[2]).collect();
-        self.run(|ctx| Self::host(ctx, "layout")?.1.call((id, xs, ys, zs, aspect)))
+        self.fixture_layout(id, &FixtureLayout::plain(points.to_vec(), aspect))
+    }
+
+    /// A fixture's layout: `id` for effects, with its effect size applied,
+    /// and [`Scripts::transition_layout`]`(id)` for transitions, which always
+    /// cover the whole light.
+    pub fn fixture_layout(&self, id: &str, layout: &FixtureLayout) -> Result<(), String> {
+        let whole = FixtureLayout {
+            scale: 1.0,
+            ..layout.clone()
+        };
+        for (id, l) in [
+            (id.to_string(), layout.for_scripts()),
+            (Self::transition_layout(id), whole.for_scripts()),
+        ] {
+            self.run(|ctx| {
+                Self::host(ctx, "layout")?
+                    .1
+                    .call::<_, ()>((id, l.x, l.y, l.z, l.aspect, l.u, l.spacing))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// The layout id transitions on fixture layout `id` use.
+    pub fn transition_layout(id: &str) -> String {
+        format!("{id}/transition")
     }
 
     pub fn create(
@@ -266,7 +290,8 @@ impl Scripts {
         // else touches the runtime meanwhile.
         let data = unsafe { array.as_slice() };
         for (o, v) in out.iter_mut().zip(data) {
-            *o = if v.is_finite() { *v } else { 0.0 };
+            // Tests see broken values; the lights get black instead.
+            *o = if v.is_finite() || cfg!(test) { *v } else { 0.0 };
         }
     }
 
@@ -428,18 +453,128 @@ mod tests {
     }
 
     #[test]
+    fn builtin_effects_render_at_any_effect_size() {
+        let curtain: Vec<[f32; 3]> = (0..210)
+            .map(|i| [(i / 21) as f32 / 9.0, (i % 21) as f32 / 20.0, 0.5])
+            .collect();
+        let strip: Vec<f32> = (0..150).map(|i| i as f32 / 149.0).collect();
+        let along = FixtureLayout {
+            points: strip.iter().map(|&u| [u, 0.5, 0.5]).collect(),
+            aspect: 25.0,
+            u: Some(strip.clone()),
+            spacing: Some(1.0 / 149.0),
+            scale: 1.0,
+        };
+        for (name, source, _) in crate::builtin::all().filter(|(_, _, t)| !*t) {
+            let s = Scripts::new().unwrap();
+            let meta = s.register("e", source).unwrap();
+            let colors: Vec<Rgb> = meta
+                .colors
+                .iter()
+                .filter_map(|c| crate::color::parse_hex(&c.default))
+                .collect();
+            for scale in [crate::layout::MIN_SCALE, crate::layout::MAX_SCALE] {
+                for (id, base) in [
+                    ("curtain", FixtureLayout::plain(curtain.clone(), 0.95)),
+                    ("along", along.clone()),
+                ] {
+                    let l = FixtureLayout { scale, ..base };
+                    s.fixture_layout(id, &l).unwrap();
+                    s.create(id, "e", id, &serde_json::json!({}), &colors)
+                        .unwrap_or_else(|e| panic!("{name}: {e}"));
+                    let mut out = vec![0.0; l.points.len() * 3];
+                    for f in 0..5 {
+                        s.render(id, f as f64 * 0.7, 0.04, &mut out)
+                            .unwrap_or_else(|e| panic!("{name} on the {id} at {scale}: {e}"));
+                        assert!(
+                            out.iter().all(|v| v.is_finite()),
+                            "{name} on the {id} at {scale} gives {:?}",
+                            out.iter().find(|v| !v.is_finite())
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fixtures_supply_u_spacing_and_effect_size() {
+        let s = Scripts::new().unwrap();
+        let l = FixtureLayout {
+            points: vec![[1.0, 0.5, 0.5], [0.0, 0.5, 0.5], [0.5, 0.5, 0.5]],
+            aspect: 10.0,
+            u: Some(vec![1.0, 0.0, 0.5]),
+            spacing: Some(0.5),
+            scale: 2.0,
+        };
+        s.fixture_layout("l", &l).unwrap();
+        s.register(
+            "e",
+            r#"
+            export function setup(ctx) { return sampler(ctx); }
+            export function render(ctx, s) {
+                const f = new Float32Array(ctx.n * 3), rgb = [0, 0, 0];
+                for (let i = 0; i < ctx.n; i++) f[i * 3] = i / 10;
+                for (let i = 0; i < ctx.n; i++) {
+                    // Between LEDs 1 (u 0.25) and 2 (u 0.5) along u.
+                    s.along(f, 0.375, rgb);
+                    ctx.out.set([ctx.u[i], ctx.spacing, i === 0 ? rgb[0] : ctx.x[i]], i * 3);
+                }
+            }
+            "#,
+        )
+        .unwrap();
+        s.create("i", "e", "l", &serde_json::json!({}), &[])
+            .unwrap();
+        let mut out = [0.0; 9];
+        s.render("i", 0.0, 0.0, &mut out).unwrap();
+        let want = [0.75, 0.25, 0.15, 0.25, 0.25, 0.25, 0.5, 0.25, 0.5];
+        for (o, w) in out.iter().zip(want) {
+            assert!((o - w).abs() < 1e-6, "{out:?}");
+        }
+    }
+
+    #[test]
     fn builtin_transitions_start_at_a_and_end_at_b() {
         let curtain: Vec<[f32; 3]> = (0..210)
             .map(|i| [(i / 21) as f32 / 9.0, (i % 21) as f32 / 20.0, 0.5])
             .collect();
         let strip: Vec<[f32; 3]> = (0..600).map(|i| [i as f32 / 599.0, 0.5, 0.5]).collect();
+        // A light laid out along its length, LEDs zigzagging, at double size.
+        let zigzag: Vec<f32> = (0..300)
+            .map(|i| ((i ^ 1).min(299)) as f32 / 299.0)
+            .collect();
+        let along = FixtureLayout {
+            points: zigzag.iter().map(|&u| [u, 0.5, 0.5]).collect(),
+            aspect: 50.0,
+            u: Some(zigzag.clone()),
+            spacing: Some(1.0 / 299.0),
+            scale: 2.0,
+        };
+        let small = FixtureLayout {
+            scale: 0.5,
+            ..FixtureLayout::plain(curtain.clone(), 0.95)
+        };
+        let layouts = [
+            ("curtain", FixtureLayout::plain(curtain.clone(), 0.95)),
+            ("strip", FixtureLayout::plain(strip, 1.0)),
+            ("small curtain", small),
+            ("along", along),
+        ];
         for (name, source, _) in crate::builtin::all().filter(|(_, _, t)| *t) {
             let s = Scripts::new().unwrap();
             s.register("t", source).unwrap();
-            for (id, points, aspect) in [("curtain", &curtain, 0.95), ("strip", &strip, 1.0)] {
-                s.layout(id, points, aspect).unwrap();
-                s.create(id, "t", id, &serde_json::json!({}), &[]).unwrap();
-                let len = points.len() * 3;
+            for (id, l) in &layouts {
+                s.fixture_layout(id, l).unwrap();
+                s.create(
+                    id,
+                    "t",
+                    &Scripts::transition_layout(id),
+                    &serde_json::json!({}),
+                    &[],
+                )
+                .unwrap();
+                let len = l.points.len() * 3;
                 let a: Vec<f32> = (0..len).map(|i| (i * 37 % 101) as f32 / 100.0).collect();
                 let b: Vec<f32> = (0..len).map(|i| (i * 53 % 97) as f32 / 96.0).collect();
                 let mut out = vec![0.0; len];

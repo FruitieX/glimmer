@@ -6,10 +6,74 @@ use crate::{
     model::{Device, Fixture, LayoutMode},
 };
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct FixtureLayout {
+    /// Where the LEDs are, for drawing the light.
     pub points: Vec<[f32; 3]>,
     /// Width / height before normalisation (1 when either is flat).
     pub aspect: f32,
+    /// Each LED's place along the light, when that isn't the LED order.
+    pub u: Option<Vec<f32>>,
+    /// Typical gap between neighbouring LEDs, when the scripts shouldn't
+    /// work it out from the positions.
+    pub spacing: Option<f32>,
+    /// The light's effect size (`Fixture::scale`).
+    pub scale: f32,
+}
+
+/// What scripts see of a fixture: its layout zoomed by its effect size.
+pub struct ScriptLayout {
+    pub x: Vec<f32>,
+    pub y: Vec<f32>,
+    pub z: Vec<f32>,
+    pub u: Vec<f32>,
+    pub aspect: f32,
+    pub spacing: Option<f32>,
+}
+
+pub const MIN_SCALE: f32 = 0.25;
+pub const MAX_SCALE: f32 = 4.0;
+
+impl FixtureLayout {
+    /// Positions in LED order, without an effect size.
+    pub fn plain(points: Vec<[f32; 3]>, aspect: f32) -> Self {
+        Self {
+            points,
+            aspect,
+            u: None,
+            spacing: None,
+            scale: 1.0,
+        }
+    }
+
+    /// Zooms every coordinate about the centre, so a scale of 2 shows half
+    /// of the 0..1 world (features look twice as big) and 0.5 shows twice
+    /// as much. The aspect stays: the shape of the light doesn't change.
+    pub fn for_scripts(&self) -> ScriptLayout {
+        let k = 1.0 / self.scale.clamp(MIN_SCALE, MAX_SCALE);
+        let zoom = |v: f32| (v - 0.5) * k + 0.5;
+        let n = self.points.len();
+        let u = match &self.u {
+            Some(u) => u.iter().map(|&v| zoom(v)).collect(),
+            None => (0..n)
+                .map(|i| {
+                    zoom(if n > 1 {
+                        i as f32 / (n - 1) as f32
+                    } else {
+                        0.0
+                    })
+                })
+                .collect(),
+        };
+        ScriptLayout {
+            x: self.points.iter().map(|p| zoom(p[0])).collect(),
+            y: self.points.iter().map(|p| zoom(p[1])).collect(),
+            z: self.points.iter().map(|p| zoom(p[2])).collect(),
+            u,
+            aspect: self.aspect,
+            spacing: self.spacing.map(|s| s * k),
+        }
+    }
 }
 
 fn normalise(raw: Vec<[f32; 3]>) -> FixtureLayout {
@@ -39,7 +103,91 @@ fn normalise(raw: Vec<[f32; 3]>) -> FixtureLayout {
     } else {
         1.0
     };
-    FixtureLayout { points, aspect }
+    FixtureLayout::plain(points, aspect)
+}
+
+/// Lays a light out as a straight strip along its main direction: the
+/// principal axis of its positions, running bottom → top (or left → right
+/// when it's nearly level, or towards the viewer when it points at them).
+/// `x` and `u` are each LED's place along that axis, 0..1, so effects that
+/// run along the string follow it physically rather than the order the
+/// LEDs zigzag in.
+fn along(raw: &[[f32; 3]]) -> FixtureLayout {
+    let n = raw.len();
+    let t = project(raw);
+    let lo = t.iter().copied().fold(f32::MAX, f32::min);
+    let hi = t.iter().copied().fold(f32::MIN, f32::max);
+    let span = hi - lo;
+    let u: Vec<f32> = t
+        .iter()
+        .map(|&v| if span > 1e-6 { (v - lo) / span } else { 0.5 })
+        .collect();
+    let gaps = (n.max(2) - 1) as f32;
+    FixtureLayout {
+        points: u.iter().map(|&v| [v, 0.5, 0.5]).collect(),
+        // Treat the strip as about six LEDs thick, so effects see a long
+        // line (a 120-LED string comes out at 20:1).
+        aspect: (gaps / 6.0).max(4.0),
+        // The mean gap: projected neighbours can land almost on top of
+        // each other, so the nearest one says little.
+        spacing: Some(1.0 / gaps),
+        u: Some(u),
+        scale: 1.0,
+    }
+}
+
+/// Each point's coordinate along the principal axis of `raw`, oriented as
+/// `along` describes. Not normalised.
+fn project(raw: &[[f32; 3]]) -> Vec<f32> {
+    let n = raw.len().max(1) as f32;
+    let mut mean = [0.0f32; 3];
+    for p in raw {
+        for a in 0..3 {
+            mean[a] += p[a] / n;
+        }
+    }
+    let mut cov = [[0.0f32; 3]; 3];
+    for p in raw {
+        let d = [p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]];
+        for a in 0..3 {
+            for b in 0..3 {
+                cov[a][b] += d[a] * d[b] / n;
+            }
+        }
+    }
+    let norm = |v: [f32; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    // Power iteration from the column with the most variance in it.
+    let start = (0..3)
+        .max_by(|&a, &b| cov[a][a].total_cmp(&cov[b][b]))
+        .unwrap_or(0);
+    let mut v = cov[start];
+    for _ in 0..64 {
+        let w = [0, 1, 2].map(|a| cov[a][0] * v[0] + cov[a][1] * v[1] + cov[a][2] * v[2]);
+        let len = norm(w);
+        if len < 1e-12 {
+            break;
+        }
+        v = w.map(|c| c / len);
+    }
+    let len = norm(v);
+    if len < 1e-9 {
+        // No spread at all.
+        return vec![0.0; raw.len()];
+    }
+    v = v.map(|c| c / len);
+    // Upwards unless it's within about 12° of level; then left → right.
+    let sign = if v[1].abs() > 0.2 {
+        v[1].signum()
+    } else if v[0].abs() >= v[2].abs() {
+        v[0].signum()
+    } else {
+        v[2].signum()
+    };
+    raw.iter()
+        .map(|p| {
+            sign * ((p[0] - mean[0]) * v[0] + (p[1] - mean[1]) * v[1] + (p[2] - mean[2]) * v[2])
+        })
+        .collect()
 }
 
 /// Moves LEDs that the Twinkly app mapped far away from every other LED
@@ -95,8 +243,9 @@ pub fn repair_strays(layout: &mut device::Layout) {
 
 pub fn fixture_layout(device: &Device, fixture: &Fixture) -> FixtureLayout {
     let n = fixture.count;
+    let in_order = || (0..n).map(|i| [i as f32, 0.0, 0.0]).collect();
     let mut raw: Vec<[f32; 3]> = match &fixture.layout {
-        LayoutMode::Device => match &device.layout {
+        LayoutMode::Device | LayoutMode::Along => match &device.layout {
             Some(layout)
                 if layout.coordinates.len() >= fixture.start + n && layout.source != "linear" =>
             {
@@ -105,9 +254,9 @@ pub fn fixture_layout(device: &Device, fixture: &Fixture) -> FixtureLayout {
                     .map(|p| [p.x, p.y, p.z])
                     .collect()
             }
-            _ => (0..n).map(|i| [i as f32, 0.0, 0.0]).collect(),
+            _ => in_order(),
         },
-        LayoutMode::Linear => (0..n).map(|i| [i as f32, 0.0, 0.0]).collect(),
+        LayoutMode::Linear => in_order(),
         LayoutMode::Grid { strand, zigzag } => {
             let strand = (*strand).max(1);
             (0..n)
@@ -126,7 +275,12 @@ pub fn fixture_layout(device: &Device, fixture: &Fixture) -> FixtureLayout {
     if fixture.reversed {
         raw.reverse();
     }
-    normalise(raw)
+    let mut l = match fixture.layout {
+        LayoutMode::Along => along(&raw),
+        _ => normalise(raw),
+    };
+    l.scale = fixture.scale;
+    l
 }
 
 #[cfg(test)]
@@ -162,6 +316,7 @@ mod tests {
             transitions: Default::default(),
             sort: 0,
             seasonal: true,
+            scale: 1.0,
         }
     }
 
@@ -227,5 +382,95 @@ mod tests {
         );
         assert_eq!(l.points[0], [0.0, 1.0, 0.5]);
         assert_eq!(l.points[2], [1.0, 0.0, 0.5]);
+    }
+
+    #[test]
+    fn along_lays_a_noisy_diagonal_band_out_bottom_to_top() {
+        // A string zigzagging up a staircase from the right: 3.5 wide, 1 high,
+        // with each LED jumping across the banister and back.
+        let n = 200;
+        let coords = (0..n)
+            .map(|i| {
+                let t = i as f32 / (n - 1) as f32;
+                let side = if i % 2 == 0 { 0.08 } else { -0.08 };
+                let jitter = (hash(i) - 0.5) * 0.04;
+                device::Point {
+                    x: 3.5 * (1.0 - t) + side + jitter,
+                    y: t + side * 0.5 - jitter,
+                    z: side,
+                }
+            })
+            .collect();
+        let d = device(Some(device::Layout {
+            source: "3d".into(),
+            synthesized: false,
+            coordinates: coords,
+            repaired: vec![],
+        }));
+        let l = fixture_layout(&d, &fixture(0, n, LayoutMode::Along));
+        let u = l.u.clone().unwrap();
+        // The first LED is at the bottom; the strip is flat in y and z.
+        assert!(u[0] < 0.03 && u[n - 1] > 0.97, "{} {}", u[0], u[n - 1]);
+        assert!(l.points.iter().all(|p| p[1] == 0.5 && p[2] == 0.5));
+        assert!(l.points.iter().zip(&u).all(|(p, u)| p[0] == *u));
+        // In physical order apart from the zigzag: each LED is near its share
+        // of the way up, and a few LEDs further along is always higher.
+        let off = (0..n)
+            .map(|i| (u[i] - i as f32 / (n - 1) as f32).abs())
+            .fold(0.0, f32::max);
+        assert!(off < 0.05, "{off}");
+        assert!((10..n).all(|i| u[i] > u[i - 10]));
+        assert!(l.aspect > 2.5);
+        assert!((l.spacing.unwrap() - 1.0 / 199.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn along_runs_left_to_right_when_level_and_in_order_unmapped() {
+        let coords = (0..10)
+            .map(|i| device::Point {
+                x: 9.0 - i as f32,
+                y: if i % 2 == 0 { 0.1 } else { 0.0 },
+                z: 0.0,
+            })
+            .collect();
+        let d = device(Some(device::Layout {
+            source: "2d".into(),
+            synthesized: false,
+            coordinates: coords,
+            repaired: vec![],
+        }));
+        let u = fixture_layout(&d, &fixture(0, 10, LayoutMode::Along))
+            .u
+            .unwrap();
+        assert!(u[0] > 0.99 && u[9] < 0.01);
+        let u = fixture_layout(&device(None), &fixture(0, 5, LayoutMode::Along))
+            .u
+            .unwrap();
+        assert_eq!(u, [0.0, 0.25, 0.5, 0.75, 1.0]);
+    }
+
+    #[test]
+    fn scale_zooms_about_the_centre() {
+        let mut f = fixture(0, 5, LayoutMode::Along);
+        f.scale = 2.0;
+        let l = fixture_layout(&device(None), &f);
+        // What the light shows stays put; scripts see the zoomed world.
+        assert_eq!(l.points[0], [0.0, 0.5, 0.5]);
+        let s = l.for_scripts();
+        assert_eq!(s.x, [0.25, 0.375, 0.5, 0.625, 0.75]);
+        assert_eq!(s.u, s.x);
+        assert_eq!(s.y, [0.5; 5]);
+        assert_eq!(s.spacing, Some(0.125));
+        assert_eq!(s.aspect, l.aspect);
+        let mut f = fixture(0, 3, LayoutMode::Linear);
+        f.scale = 0.5;
+        let s = fixture_layout(&device(None), &f).for_scripts();
+        assert_eq!(s.x, [-0.5, 0.5, 1.5]);
+        assert_eq!(s.u, [-0.5, 0.5, 1.5]);
+        assert_eq!(s.spacing, None);
+    }
+
+    fn hash(i: usize) -> f32 {
+        ((i as u32).wrapping_mul(2654435761) >> 8) as f32 / (1u32 << 24) as f32
     }
 }

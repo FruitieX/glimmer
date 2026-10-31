@@ -178,6 +178,42 @@ try {
   for (const s of Object.values(afterSwitching))
     assert.deepEqual(s.fixtureErrors, {}, "no transition errors");
 
+  // Laid out along its length at double effect size, the curtain is a flat
+  // strip running left to right, and it keeps streaming.
+  {
+    const before = await getFixture();
+    const tooBig = await page.request.put(curtainUrl, {
+      headers: { Origin: origin },
+      data: { ...before, scale: 5 },
+    });
+    assert.equal(tooBig.status(), 400, "effect size out of range");
+    const r = await page.request.put(curtainUrl, {
+      headers: { Origin: origin },
+      data: { ...before, layout: { kind: "along" }, scale: 2 },
+    });
+    assert.ok(r.ok(), `along its length: ${await r.text()}`);
+    const entry = (await (await page.request.get(`${origin}/api/state`)).json())
+      .fixtures[0];
+    assert.equal(entry.fixture.scale, 2);
+    const pts = entry.layout.points;
+    assert.ok(
+      pts.every((p) => p[1] === 0.5),
+      "flat along its length",
+    );
+    // Strands hang left to right, so the first strand is at the start.
+    assert.ok(pts[0][0] < 0.05 && pts[pts.length - 1][0] > 0.95);
+    const frames = fake.state.frames;
+    await until(
+      "frames along its length",
+      () => fake.state.frames > frames + 20,
+    );
+    const restored = await page.request.put(curtainUrl, {
+      headers: { Origin: origin },
+      data: { ...before, layout: before.layout, scale: 1 },
+    });
+    assert.ok(restored.ok(), "back to the mapped layout");
+  }
+
   await page.reload();
   await page.getByText(/Shuffles between these/).waitFor();
   // Add one to the "Turning on" list with the picker.
@@ -513,6 +549,31 @@ try {
       Staircase: [0, 105],
       "Staircase upper": [105, 105],
     });
+    // Along its length, the upper flight (climbing right to left) becomes a
+    // flat strip from its bottom step to its top.
+    const upperUrl = `${origin}/api/fixtures/${encodeURIComponent("Staircase upper")}`;
+    const upperEntry = async () =>
+      (
+        await (await page.request.get(`${origin}/api/state`)).json()
+      ).fixtures.find((f) => f.fixture.id === "Staircase upper");
+    const along = await page.request.put(upperUrl, {
+      headers: { Origin: origin },
+      data: {
+        ...(await upperEntry()).fixture,
+        layout: { kind: "along" },
+        scale: 2,
+      },
+    });
+    assert.ok(along.ok(), `staircase along its length: ${await along.text()}`);
+    const steps = (await upperEntry()).layout.points;
+    assert.ok(
+      steps.every((p) => p[1] === 0.5),
+      "flat along its length",
+    );
+    assert.ok(
+      steps.every((p, i) => i === 0 || p[0] > steps[i - 1][0]),
+      "in order up the stairs",
+    );
     assert.equal(stairs.state.frames, 0, "nothing streamed to the staircase");
   } finally {
     stairs.close();

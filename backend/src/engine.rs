@@ -471,6 +471,8 @@ static NO_TRANSITIONS: TransitionChoice = TransitionChoice(Vec::new());
 struct FixtureRt {
     cfg: Fixture,
     layout: String,
+    /// The positions its instances were made with.
+    shape: layout::FixtureLayout,
     points: usize,
     state: FixtureState,
     layer: Option<Layer>,
@@ -687,13 +689,13 @@ impl Worker {
             };
             let l = layout::fixture_layout(&self.device, &cfg);
             let layout_id = format!("{}:{}:{}", cfg.id, cfg.start, cfg.count);
-            if let Err(e) = self.scripts.layout(&layout_id, &l.points, l.aspect) {
+            if let Err(e) = self.scripts.fixture_layout(&layout_id, &l) {
                 tracing::error!("layout for {}: {e}", cfg.id);
                 continue;
             }
             let len = cfg.count * 3;
             match old.remove(&cfg.id) {
-                Some(mut f) if f.layout == layout_id && f.points == cfg.count => {
+                Some(mut f) if f.layout == layout_id && f.points == cfg.count && f.shape == l => {
                     f.cfg = cfg;
                     self.fixtures.push(f);
                 }
@@ -702,6 +704,7 @@ impl Worker {
                     let mut fresh = FixtureRt {
                         cfg,
                         layout: layout_id,
+                        shape: l,
                         points: len / 3,
                         state: f.state.clone(),
                         layer: None,
@@ -722,6 +725,7 @@ impl Worker {
                 None => self.fixtures.push(FixtureRt {
                     cfg,
                     layout: layout_id,
+                    shape: l,
                     points: len / 3,
                     state: FixtureState::default(),
                     layer: None,
@@ -798,7 +802,7 @@ impl Worker {
         }
         self.ensure_registered(&source)?;
         let instance = self.next_id("t");
-        let layout = self.fixtures[idx].layout.clone();
+        let layout = Scripts::transition_layout(&self.fixtures[idx].layout);
         self.scripts
             .create(&instance, &source.key(), &layout, &spec.params, &[])?;
         Ok(instance)

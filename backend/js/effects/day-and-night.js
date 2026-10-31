@@ -55,7 +55,7 @@ export function render(ctx, s) {
     let b = night[2] + (day[2] * (1 - 0.25 * hz) + 0.25 * hz * 1 - night[2]) * daylight;
     // Dawn and dusk: a warm glow low in the sky, strongest on the sun's side.
     const side = Math.exp(-(xi - sx) * (xi - sx) * 2.5);
-    const gk = clamp(twilight * (0.35 + 0.65 * side) * Math.pow(hz, 1.6) * 1.2);
+    const gk = clamp(twilight * (0.35 + 0.65 * side) * Math.pow(Math.max(0, hz), 1.6) * 1.2);
     r += (dusk[0] - r) * gk;
     g += (dusk[1] - g) * gk;
     b += (dusk[2] - b) * gk;

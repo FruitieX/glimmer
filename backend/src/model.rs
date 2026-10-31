@@ -40,6 +40,8 @@ pub enum LayoutMode {
     Linear,
     /// Strands of `strand` LEDs side by side, alternating direction when `zigzag`.
     Grid { strand: usize, zigzag: bool },
+    /// A straight strip along the mapped positions' main direction.
+    Along,
 }
 
 /// A controllable part of a device: what homectl and the UI see as one light.
@@ -63,6 +65,10 @@ pub struct Fixture {
     /// Whether seasonal playlists switch this light over when their season starts.
     #[serde(default = "yes")]
     pub seasonal: bool,
+    /// Effect size: above 1 features look bigger (less of the effect shows),
+    /// below 1 smaller. 0.25..4.
+    #[serde(default = "one")]
+    pub scale: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -286,6 +292,10 @@ pub struct PlaylistEntry {
 
 fn default_entry_s() -> f64 {
     60.0
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 fn yes() -> bool {

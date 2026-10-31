@@ -70,7 +70,7 @@ export function render(ctx, s) {
       const slosh = 0.5 + 0.5 * Math.sin(TAU * (u[i] * 3 + p * 5)) * Math.sin(TAU * (u[i] * 7 - p * 3));
       const lv = 0.12 + 0.2 * slosh;
       let r = brew[0] * lv, g = brew[1] * lv, b = brew[2] * lv;
-      const cj = Math.min(ci, cells - 1);
+      const cj = clamp(ci, 0, cells - 1);
       const life = s.cl[cj];
       const d = ((pos - s.cc[cj]) * span) / cells;
       const size = 0.6 + 2.4 * life;

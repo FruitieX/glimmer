@@ -26,7 +26,9 @@ export const meta = {
 // matches the LED columns and rows; on a straight string it is one row, where
 // "turn right" keeps going and "turn left" turns around.
 function makeGrid(ctx, defW, defH, lineCells) {
-  const { n, x, y } = ctx;
+  // Small effect sizes put LEDs outside 0..1: repeat the grid there.
+  const { n } = ctx;
+  const x = ctx.x.map(tile), y = ctx.y.map(tile);
   let lo = 1, hi = 0;
   for (let i = 0; i < n; i++) { lo = Math.min(lo, y[i]); hi = Math.max(hi, y[i]); }
   const line = hi - lo < 0.02;

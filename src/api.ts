@@ -94,7 +94,8 @@ export interface Device {
 export type LayoutMode =
   | { kind: "device" }
   | { kind: "linear" }
-  | { kind: "grid"; strand: number; zigzag: boolean };
+  | { kind: "grid"; strand: number; zigzag: boolean }
+  | { kind: "along" };
 
 export interface TransitionSpec {
   scriptId: string;
@@ -119,6 +120,8 @@ export interface Fixture {
   sort: number;
   /** Whether seasonal playlists switch this light over when their season starts. */
   seasonal: boolean;
+  /** Effect size: above 1 features look bigger, below 1 smaller (0.25..4). */
+  scale: number;
 }
 
 export interface Look {

@@ -34,7 +34,9 @@ const PRESETS = {
 // The reaction runs on a grid twice as fine as the LEDs (a curtain's columns
 // and rows, or one row on a straight string), averaged down for display.
 function makeGrid(ctx, defW, defH, lineCells) {
-  const { n, x, y } = ctx;
+  // Small effect sizes put LEDs outside 0..1: repeat the grid there.
+  const { n } = ctx;
+  const x = ctx.x.map(tile), y = ctx.y.map(tile);
   let lo = 1, hi = 0;
   for (let i = 0; i < n; i++) { lo = Math.min(lo, y[i]); hi = Math.max(hi, y[i]); }
   const line = hi - lo < 0.02;

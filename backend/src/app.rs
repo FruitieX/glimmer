@@ -116,6 +116,7 @@ pub fn new_fixture(id: &str, device: &Device, start: usize, count: usize, sort: 
         transitions: Default::default(),
         sort,
         seasonal: true,
+        scale: 1.0,
     }
 }
 

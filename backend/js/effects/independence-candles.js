@@ -46,7 +46,7 @@ export function render(ctx) {
   const soft = Math.max(spacing * 1.2, 0.025);
   for (let i = 0; i < n; i++) {
     const cell = x[i] * W;
-    const ci = Math.min(Math.floor(cell), W - 1);
+    const ci = clamp(Math.floor(cell), 0, W - 1);
     const cx = cell - ci; // 0..1 inside this window
     let r = 0, g = 0, b = 0;
     // Two candles per window.

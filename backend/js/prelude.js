@@ -10,6 +10,11 @@ function clamp(v, lo = 0, hi = 1) {
 function fract(v) {
   return v - Math.floor(v);
 }
+// Repeats the 0..1 world outside it (lights with a small effect size have
+// LEDs there); 0..1 itself, both ends included, stays as it is.
+function tile(v) {
+  return v < 0 || v > 1 ? v - Math.floor(v) : v;
+}
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -182,22 +187,42 @@ function sampleImage(img, frame, x, y) {
  *   s.line: true when the fixture is a line (x or y doesn't vary); use `u` then.
  *   s.sx, s.sy: typical gap between neighbouring LEDs sideways and up/down (s.su along u).
  *   s.at(frame, x, y, rgb): the colour at x, y (0..1) written into rgb; returns rgb.
- *   s.along(frame, u, rgb): the colour at u along the wire.
+ *   s.along(frame, u, rgb): the colour at u along the light (between the
+ *     LEDs nearest in `ctx.u`, which isn't always the LED order).
  * At an LED's own position the result is exactly that LED's colour.
  */
 function sampler(ctx) {
-  const { n, x, y } = ctx;
+  const { n } = ctx;
   let x0 = Infinity,
     x1 = -Infinity,
     y0 = Infinity,
-    y1 = -Infinity;
+    y1 = -Infinity,
+    u0 = Infinity,
+    u1 = -Infinity;
   for (let i = 0; i < n; i++) {
-    x0 = Math.min(x0, x[i]);
-    x1 = Math.max(x1, x[i]);
-    y0 = Math.min(y0, y[i]);
-    y1 = Math.max(y1, y[i]);
+    x0 = Math.min(x0, ctx.x[i]);
+    x1 = Math.max(x1, ctx.x[i]);
+    y0 = Math.min(y0, ctx.y[i]);
+    y1 = Math.max(y1, ctx.y[i]);
+    u0 = Math.min(u0, ctx.u[i]);
+    u1 = Math.max(u1, ctx.u[i]);
   }
   const line = n < 3 || x1 - x0 < 1e-3 || y1 - y0 < 1e-3;
+  // A light with a small effect size has LEDs outside 0..1: cover the
+  // wider area, scaled into 0..1 here.
+  const ox = Math.min(0, x0),
+    wx = Math.max(1, x1) - ox,
+    oy = Math.min(0, y0),
+    wy = Math.max(1, y1) - oy;
+  const x = new Float32Array(n),
+    y = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    x[i] = (ctx.x[i] - ox) / wx;
+    y[i] = (ctx.y[i] - oy) / wy;
+  }
+  // LEDs in order along u (the LED order unless the light says otherwise).
+  const order = Int32Array.from({ length: n }, (_, i) => i).sort((a, b) => ctx.u[a] - ctx.u[b]);
+  const us = Float32Array.from(order, (i) => ctx.u[i]);
   // Typical gap to the next LED sideways and up/down, so columns far apart
   // still blend into each other.
   const gaps = (horizontal) => {
@@ -329,6 +354,8 @@ function sampler(ctx) {
     cw = new Float64Array(4);
 
   function at(frame, px, py, rgb) {
+    px = (px - ox) / wx;
+    py = (py - oy) / wy;
     px = px < 0 ? 0 : px > 1 ? 1 : px;
     py = py < 0 ? 0 : py > 1 ? 1 : py;
     if (line) {
@@ -394,15 +421,25 @@ function sampler(ctx) {
   }
 
   function along(frame, pu, rgb) {
-    const f = clamp(pu) * Math.max(0, n - 1);
-    const i = Math.min(Math.floor(f), Math.max(0, n - 2));
-    const k = n > 1 ? f - i : 0;
-    const j = Math.min(i + 1, n - 1);
-    for (let c = 0; c < 3; c++) rgb[c] = frame[i * 3 + c] + (frame[j * 3 + c] - frame[i * 3 + c]) * k;
+    // The last LED at or before pu, blended with the next one.
+    let lo = 0,
+      hi = n - 1;
+    if (!(pu > us[0])) hi = 0;
+    else if (pu >= us[n - 1]) lo = hi;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (us[mid] <= pu) lo = mid;
+      else hi = mid;
+    }
+    const gap = us[hi] - us[lo];
+    const k = gap > 0 ? (pu - us[lo]) / gap : 0;
+    const i = order[lo] * 3,
+      j = order[hi] * 3;
+    for (let c = 0; c < 3; c++) rgb[c] = frame[i + c] + (frame[j + c] - frame[i + c]) * k;
     return rgb;
   }
 
-  return { line, sx, sy, su: 1 / Math.max(1, n - 1), at, along };
+  return { line, sx: sx * wx, sy: sy * wy, su: n > 1 ? (u1 - u0) / (n - 1) : 1, at, along };
 }
 
 var ease = {
@@ -452,28 +489,39 @@ globalThis.__host = (() => {
     unregister(key) {
       modules.delete(key);
     },
-    layout(id, xs, ys, zs, aspect) {
+    // `us` (place along the light) and `given` (LED spacing) are optional;
+    // by default u follows the LED order and spacing is measured.
+    layout(id, xs, ys, zs, aspect, us, given) {
       const n = xs.length;
       const x = Float32Array.from(xs),
         y = Float32Array.from(ys),
         z = Float32Array.from(zs);
       const u = new Float32Array(n);
-      for (let i = 0; i < n; i++) u[i] = n > 1 ? i / (n - 1) : 0;
-      // Typical distance to the nearest LED, for antialiasing.
-      const near = [];
-      for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 64))) {
-        let best = Infinity;
-        for (let j = 0; j < n; j++) {
-          if (i === j) continue;
-          const d = Math.hypot(x[i] - x[j], y[i] - y[j], z[i] - z[j]);
-          if (d > 1e-6 && d < best) best = d;
+      for (let i = 0; i < n; i++) u[i] = us ? us[i] : n > 1 ? i / (n - 1) : 0;
+      let spacing = given;
+      if (!(spacing > 0)) {
+        // Typical distance to the nearest LED, for antialiasing.
+        const near = [];
+        for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 64))) {
+          let best = Infinity;
+          for (let j = 0; j < n; j++) {
+            if (i === j) continue;
+            const d = Math.hypot(x[i] - x[j], y[i] - y[j], z[i] - z[j]);
+            if (d > 1e-6 && d < best) best = d;
+          }
+          if (best < Infinity) near.push(best);
         }
-        if (best < Infinity) near.push(best);
+        near.sort((a, b) => a - b);
+        spacing = near.length ? near[Math.floor(near.length / 2)] : 0.05;
       }
-      near.sort((a, b) => a - b);
-      const spacing = near.length ? near[Math.floor(near.length / 2)] : 0.05;
       // Sub-LED sample positions (a rotated 2 × 2 grid) for antialiased effects.
-      const du = n > 1 ? 1 / (n - 1) : 0;
+      let u0 = Infinity,
+        u1 = -Infinity;
+      for (let i = 0; i < n; i++) {
+        u0 = Math.min(u0, u[i]);
+        u1 = Math.max(u1, u[i]);
+      }
+      const du = n > 1 ? (u1 - u0) / (n - 1) : 0;
       const offsets = [
         [-0.375, -0.125, -0.375],
         [0.125, -0.375, -0.125],
