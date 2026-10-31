@@ -391,7 +391,37 @@ pub fn builtins() -> Vec<Builtin> {
             name: "Everyday",
             season: None,
             prefix: None,
-            scripts: &["candle", "aurora", "palette-drift", "lava-lamp", "ocean"],
+            scripts: &[
+                "candle",
+                "aurora",
+                "palette-drift",
+                "lava-lamp",
+                "ocean",
+                "aurora-rays",
+                "twinkle",
+                "drifting-clouds",
+                "campfire-embers",
+                "surf",
+                "colour-waves",
+                "gradient",
+                "kaleidoscope",
+                "morphing-tiles",
+                "radial-bloom",
+                "angled-stripes",
+                "interference",
+                "liquid-marble",
+                "plasma",
+                "ribbons",
+                "ripple",
+                "silk",
+                "warped-plasma",
+                "fractal-clouds",
+                "julia-morph",
+                "bubbles",
+                "pendulum-wave",
+                "fluid",
+                "reaction-diffusion",
+            ],
             duration_s: 180.0,
         },
     ]
@@ -558,7 +588,7 @@ mod tests {
         );
         assert_eq!(
             p.iter().find(|p| p.id == "everyday").unwrap().entries.len(),
-            5
+            29
         );
     }
 

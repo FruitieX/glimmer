@@ -320,7 +320,7 @@ pub fn seed_playlists(db: &Connection) -> Result<()> {
             }
             db.execute("INSERT INTO seeded(id) VALUES(?1)", [&key])
                 .map_err(err)?;
-        } else if let Some(mut p) = existing.filter(|p| p.builtin && b.prefix.is_some()) {
+        } else if let Some(mut p) = existing.filter(|p| p.builtin) {
             let new: Vec<&String> = b
                 .scripts(&effects)
                 .into_iter()
@@ -710,7 +710,24 @@ mod tests {
         halloween.name = "Spooky".into();
         save_playlist(&db, &halloween).unwrap();
         delete_playlist(&db, "summer").unwrap();
+        // An Everyday from before it grew: the rest of its effects join,
+        // except one the user took out.
+        let mut everyday = playlists(&db)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == "everyday")
+            .unwrap();
+        everyday.entries.truncate(5);
+        everyday.removed = vec!["plasma".into()];
+        save_playlist(&db, &everyday).unwrap();
         seed_playlists(&db).unwrap();
+        let everyday = playlists(&db)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == "everyday")
+            .unwrap();
+        assert_eq!(everyday.entries.len(), 28);
+        assert!(!everyday.entries.iter().any(|e| e.script_id == "plasma"));
         let all = playlists(&db).unwrap();
         let halloween = all.iter().find(|p| p.id == "halloween").unwrap();
         assert_eq!(halloween.name, "Spooky", "edits stay");
