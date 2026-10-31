@@ -151,7 +151,15 @@ impl Scripts {
         &self,
         f: impl for<'js> FnOnce(&Ctx<'js>) -> rquickjs::Result<T>,
     ) -> Result<T, String> {
-        let until = (self.start.elapsed() + self.budget).as_micros() as u64;
+        self.run_for(self.budget, f)
+    }
+
+    fn run_for<T>(
+        &self,
+        budget: Duration,
+        f: impl for<'js> FnOnce(&Ctx<'js>) -> rquickjs::Result<T>,
+    ) -> Result<T, String> {
+        let until = (self.start.elapsed() + budget).as_micros() as u64;
         self.deadline.store(until, Ordering::Relaxed);
         let result = self
             .ctx
@@ -159,7 +167,7 @@ impl Scripts {
         self.deadline.store(u64::MAX, Ordering::Relaxed);
         result.map_err(|e| {
             if e.contains("interrupted") {
-                format!("took longer than {} ms: {e}", self.budget.as_millis())
+                format!("took longer than {} ms: {e}", budget.as_millis())
             } else {
                 e
             }
@@ -215,7 +223,9 @@ impl Scripts {
         params: &serde_json::Value,
         colors: &[Rgb],
     ) -> Result<(), String> {
-        self.run(|ctx| {
+        // `setup` runs once and may precompute (a transition's sampler, say),
+        // so it gets more time than a frame.
+        self.run_for(self.budget * 8, |ctx| {
             let p = js_json(ctx, params)?;
             let c = js_json(ctx, &colors)?;
             Self::host(ctx, "create")?
