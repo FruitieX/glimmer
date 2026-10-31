@@ -1,9 +1,12 @@
-//! SQLite storage. Devices, fixtures, presets and playlists are JSON
-//! documents; scripts keep every saved version.
+//! SQLite storage. Devices, fixtures, presets, playlists and settings are
+//! JSON documents; scripts keep every saved version.
 
 use crate::{
     builtin,
-    model::{Device, Fixture, FixtureState, Playlist, Preset, ScriptKind, ScriptSource},
+    model::{
+        Device, Fixture, FixtureState, Playlist, Preset, ScriptKind, ScriptSource, Settings,
+        Transitions,
+    },
     script::{Meta, Scripts},
 };
 use chrono::NaiveDate;
@@ -41,6 +44,7 @@ pub fn open(path: &Path) -> Result<Connection> {
          CREATE TABLE IF NOT EXISTS presets(id TEXT PRIMARY KEY, data TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS playlists(id TEXT PRIMARY KEY, data TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS seeded(id TEXT PRIMARY KEY);
+         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS schedule_fired(
             playlist_id TEXT NOT NULL, fixture_id TEXT NOT NULL, start TEXT NOT NULL,
             PRIMARY KEY(playlist_id, fixture_id));
@@ -56,7 +60,71 @@ pub fn open(path: &Path) -> Result<Connection> {
     )
     .map_err(err)?;
     crate::images::migrate(&db)?;
+    migrate_transitions(&db)?;
     Ok(db)
+}
+
+// ---- Settings ----
+
+const TRANSITIONS_KEY: &str = "transitions";
+
+fn setting<T: serde::de::DeserializeOwned>(db: &Connection, key: &str) -> Result<Option<T>> {
+    db.query_row("SELECT data FROM settings WHERE key=?1", [key], |r| {
+        r.get::<_, String>(0)
+    })
+    .optional()
+    .map_err(err)?
+    .map(|d| serde_json::from_str(&d).map_err(err))
+    .transpose()
+}
+
+fn save_setting(db: &Connection, key: &str, value: &impl Serialize) -> Result<()> {
+    db.execute(
+        "INSERT INTO settings(key,data) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET data=excluded.data",
+        params![key, serde_json::to_string(value).map_err(err)?],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
+pub fn settings(db: &Connection) -> Result<Settings> {
+    Ok(Settings {
+        transitions: setting(db, TRANSITIONS_KEY)?.unwrap_or_default(),
+    })
+}
+
+pub fn save_settings(db: &Connection, s: &Settings) -> Result<()> {
+    save_setting(db, TRANSITIONS_KEY, &s.transitions)
+}
+
+/// Before the transitions for all lights existed, every light had its own
+/// lists, starting from the built-in ones. The first time, the lists for all
+/// lights start as those built-in ones, and light slots still holding them
+/// follow the lists for all lights from then on; changed ones stay the light's.
+fn migrate_transitions(db: &Connection) -> Result<()> {
+    if setting::<Transitions>(db, TRANSITIONS_KEY)?.is_some() {
+        return Ok(());
+    }
+    let builtin = Transitions::default();
+    let tx = db.unchecked_transaction().map_err(err)?;
+    save_setting(&tx, TRANSITIONS_KEY, &builtin)?;
+    for (mut f, state) in fixtures(&tx)? {
+        let before = f.transitions.clone();
+        for slot in [
+            crate::model::Slot::On,
+            crate::model::Slot::Off,
+            crate::model::Slot::Change,
+        ] {
+            let own = f.transitions.slot_mut(slot);
+            if own.as_ref() == Some(builtin.slot(slot)) {
+                *own = None;
+            }
+        }
+        if f.transitions != before {
+            save_fixture(&tx, &f, &state)?;
+        }
+    }
+    tx.commit().map_err(err)
 }
 
 // ---- Devices and fixtures ----
@@ -508,6 +576,96 @@ pub fn new_script_id(db: &Connection, name: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{TransitionChoice, TransitionSpec};
+
+    #[test]
+    fn older_light_transitions_follow_the_lists_for_all_lights() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.sqlite3");
+        {
+            // A database from before settings: lights hold full lists.
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(
+                "CREATE TABLE fixtures(id TEXT PRIMARY KEY, data TEXT NOT NULL, state TEXT NOT NULL);",
+            )
+            .unwrap();
+            let builtin = serde_json::to_value(Transitions::default()).unwrap();
+            let light = |id: &str, transitions: serde_json::Value| {
+                serde_json::json!({
+                    "id": id, "name": id, "deviceId": "curtain", "start": 0, "count": 10,
+                    "transitions": transitions,
+                })
+                .to_string()
+            };
+            let mut custom = builtin.clone();
+            custom["change"] = serde_json::json!([
+                {"scriptId": "iris", "durationMs": 900, "params": null}
+            ]);
+            custom["off"] = serde_json::json!([]);
+            let state = serde_json::to_string(&FixtureState::default()).unwrap();
+            for (id, t) in [("Plain", builtin), ("Custom", custom)] {
+                db.execute(
+                    "INSERT INTO fixtures(id,data,state) VALUES(?1,?2,?3)",
+                    params![id, light(id, t), state],
+                )
+                .unwrap();
+            }
+            // Single specs from even older data.
+            db.execute(
+                "INSERT INTO fixtures(id,data,state) VALUES('Old',?1,?2)",
+                params![
+                    light(
+                        "Old",
+                        serde_json::json!({
+                            "on": {"scriptId": "wipe", "durationMs": 1500, "params": {"direction": "up"}},
+                            "off": {"scriptId": "fade", "durationMs": 300},
+                            "change": {"scriptId": "fade", "durationMs": 1200, "params": null}
+                        })
+                    ),
+                    state
+                ],
+            )
+            .unwrap();
+        }
+        let db = open(&path).unwrap();
+        assert_eq!(settings(&db).unwrap().transitions, Transitions::default());
+        let get = |id: &str| fixture(&db, id).unwrap().unwrap().0.transitions;
+        assert_eq!(get("Plain"), Default::default(), "built-in lists follow");
+        let custom = get("Custom");
+        assert_eq!(custom.on, None);
+        assert_eq!(
+            custom.off,
+            Some(TransitionChoice::default()),
+            "instant stays"
+        );
+        assert_eq!(custom.change.unwrap().0[0].script_id, "iris");
+        let old = get("Old");
+        assert_eq!((old.on, old.change), (None, None));
+        assert_eq!(old.off.unwrap().0[0].duration_ms, 300);
+
+        // Runs once: lights that later copy the lists stay their own.
+        let mut s = settings(&db).unwrap();
+        s.transitions.change = TransitionChoice(vec![
+            TransitionSpec::new("iris", 400, serde_json::Value::Null),
+            TransitionSpec::new("push", 400, serde_json::Value::Null),
+        ]);
+        save_settings(&db, &s).unwrap();
+        let (mut f, state) = fixture(&db, "Plain").unwrap().unwrap();
+        f.transitions.on = Some(Transitions::default().on);
+        save_fixture(&db, &f, &state).unwrap();
+        drop(db);
+        let db = open(&path).unwrap();
+        assert_eq!(settings(&db).unwrap(), s);
+        assert!(
+            fixture(&db, "Plain")
+                .unwrap()
+                .unwrap()
+                .0
+                .transitions
+                .on
+                .is_some()
+        );
+    }
 
     #[test]
     fn scripts_are_versioned_and_builtins_sync_once() {

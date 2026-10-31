@@ -8,8 +8,8 @@ use crate::{
     device::{self, Client},
     layout,
     model::{
-        Device, Fixture, FixtureState, Look, ScriptKind, ScriptSource, TransitionChoice,
-        TransitionSpec,
+        Device, Fixture, FixtureState, Look, ScriptKind, ScriptSource, Slot, TransitionChoice,
+        TransitionSpec, Transitions,
     },
     script::{Rgb, Scripts},
 };
@@ -28,10 +28,15 @@ use tokio::sync::broadcast;
 
 pub type ScriptLookup = Arc<dyn Fn(&str) -> Option<ScriptSource> + Send + Sync>;
 
+/// The transitions for all lights, read each time a light that follows them
+/// changes, so edits apply right away.
+pub type SharedTransitions = Arc<RwLock<Transitions>>;
+
 /// How a state change is shown.
 #[derive(Clone, Debug)]
 pub enum Transition {
-    /// One of the fixture's configured on/off/change transitions.
+    /// One of the fixture's on/off/change transitions (its own list, or the
+    /// one for all lights).
     Auto,
     /// Like `Auto`, but a change of look uses one of these (a playlist's own
     /// transitions) when there are any.
@@ -91,16 +96,28 @@ pub struct Engine {
     pub status: Arc<RwLock<HashMap<String, DeviceStatus>>>,
     frames: broadcast::Sender<Arc<Frame>>,
     lookup: ScriptLookup,
+    transitions: SharedTransitions,
 }
 
 impl Engine {
-    pub fn new(lookup: ScriptLookup) -> Self {
+    pub fn new(lookup: ScriptLookup, transitions: Transitions) -> Self {
         Self {
             workers: Mutex::new(HashMap::new()),
             status: Arc::new(RwLock::new(HashMap::new())),
             frames: broadcast::channel(256).0,
             lookup,
+            transitions: Arc::new(RwLock::new(transitions)),
         }
+    }
+
+    /// Replaces the transitions for all lights.
+    pub fn set_transitions(&self, transitions: Transitions) {
+        *self.transitions.write().unwrap() = transitions;
+    }
+
+    #[cfg(test)]
+    pub fn transitions(&self) -> Transitions {
+        self.transitions.read().unwrap().clone()
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Arc<Frame>> {
@@ -132,9 +149,10 @@ impl Engine {
         let status = self.status.clone();
         let frames = self.frames.clone();
         let lookup = self.lookup.clone();
+        let transitions = self.transitions.clone();
         let thread = thread::Builder::new()
             .name(format!("render-{id}"))
-            .spawn(move || run_worker(device, fixtures, rx, status, frames, lookup))
+            .spawn(move || run_worker(device, fixtures, rx, status, frames, lookup, transitions))
             .expect("spawning a render thread");
         workers.insert(
             id,
@@ -535,6 +553,7 @@ struct Worker {
     /// Registered script keys and their colour slot defaults.
     registered: HashMap<String, Vec<String>>,
     lookup: ScriptLookup,
+    transitions: SharedTransitions,
     control: Arc<Control>,
     status: Arc<RwLock<HashMap<String, DeviceStatus>>>,
     frames: broadcast::Sender<Arc<Frame>>,
@@ -570,6 +589,7 @@ fn run_worker(
     status: Arc<RwLock<HashMap<String, DeviceStatus>>>,
     frames: broadcast::Sender<Arc<Frame>>,
     lookup: ScriptLookup,
+    transitions: SharedTransitions,
 ) {
     status.write().unwrap().insert(
         device.id.clone(),
@@ -606,6 +626,7 @@ fn run_worker(
         scripts,
         registered: HashMap::new(),
         lookup,
+        transitions,
         control: control.clone(),
         status,
         frames,
@@ -895,16 +916,17 @@ impl Worker {
             Transition::Instant => None,
             Transition::Spec(s) => Some(s),
             Transition::Auto | Transition::Change(_) => {
+                let all = self.transitions.read().unwrap();
                 let f = &mut self.fixtures[idx];
                 let t = &f.cfg.transitions;
                 let (slot, choice) = if !was_visible && visible {
-                    (0, &t.on)
+                    (0, t.effective(Slot::On, &all))
                 } else if was_visible && !visible {
-                    (1, &t.off)
+                    (1, t.effective(Slot::Off, &all))
                 } else if visible && new_layer.is_some() {
                     match &transition {
                         Transition::Change(own) if !own.is_empty() => (2, own),
-                        _ => (2, &t.change),
+                        _ => (2, t.effective(Slot::Change, &all)),
                     }
                 } else {
                     (0, &NO_TRANSITIONS)

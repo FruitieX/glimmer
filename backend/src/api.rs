@@ -7,7 +7,7 @@ use crate::{
     engine::Command,
     model::{
         Device, Fixture, FixtureState, Look, Playlist, PlaylistEntry, Preset, ScriptKind,
-        ScriptSource, Season, TransitionChoice, TransitionSpec, slug,
+        ScriptSource, Season, Settings, Slot, TransitionChoice, TransitionSpec, slug,
     },
     playlist,
     script::Scripts,
@@ -29,6 +29,8 @@ type S = State<Server>;
 pub fn routes() -> Router<Server> {
     Router::new()
         .route("/api/state", get(state))
+        .route("/api/settings", get(settings).put(update_settings))
+        .route("/api/settings/follow", post(follow_all))
         .route("/api/devices", post(create_device))
         .route(
             "/api/devices/{id}",
@@ -107,6 +109,7 @@ async fn state(State(s): S, headers: HeaderMap) -> Result<Response> {
             "fixtures": fixtures,
             "presets": db::presets(&db)?,
             "playlists": db::playlists(&db)?,
+            "settings": db::settings(&db)?,
             "scripts": db::scripts(&db)?,
             "status": *s.app.engine.status.read().unwrap(),
             "ai": s.app.ai.is_some(),
@@ -119,6 +122,41 @@ async fn state(State(s): S, headers: HeaderMap) -> Result<Response> {
             .insert(axum::http::header::SET_COOKIE, c);
     }
     Ok(response)
+}
+
+// ---- Settings ----
+
+async fn settings(State(s): S, headers: HeaderMap) -> Result<Json<Settings>> {
+    s.user(&headers)?;
+    Ok(Json(s.app.settings()?))
+}
+
+async fn update_settings(
+    State(s): S,
+    headers: HeaderMap,
+    Json(body): Json<Settings>,
+) -> Result<Json<Settings>> {
+    s.user(&headers)?;
+    check_transitions(&*s.app.db()?, body.transitions.all())?;
+    s.app.save_settings(&body)?;
+    Ok(Json(body))
+}
+
+#[derive(Deserialize)]
+struct FollowBody {
+    slot: Slot,
+}
+
+/// Makes every light use the transitions for all lights in one slot.
+async fn follow_all(
+    State(s): S,
+    headers: HeaderMap,
+    Json(body): Json<FollowBody>,
+) -> Result<Json<Value>> {
+    s.user(&headers)?;
+    let app = s.app.clone();
+    let lights = blocking(move || app.follow_all(body.slot)).await?;
+    Ok(Json(json!({ "lights": lights })))
 }
 
 // ---- Devices ----
@@ -362,7 +400,7 @@ async fn update_fixture(
         let device =
             db::device(&db, &body.device_id)?.ok_or_else(|| ApiError::not_found("The string"))?;
         check_range(&device, &body)?;
-        check_transitions(&db, body.transitions.all())?;
+        check_transitions(&db, body.transitions.own())?;
         db::save_fixture(&db, &body, &state)?;
         device.id
     };
@@ -1029,12 +1067,18 @@ async fn delete_script(
         if info.builtin {
             return Err(ApiError::bad("Built-in scripts can't be deleted."));
         }
+        let all_lights = db::settings(&db)?
+            .transitions
+            .all()
+            .any(|t| t.script_id == id)
+            .then(|| "the transitions for all lights".to_string());
         let used_by: Vec<String> = db::fixtures(&db)?
             .into_iter()
             .filter(|(f, s)| {
-                s.look.script_id == id || f.transitions.all().any(|t| t.script_id == id)
+                s.look.script_id == id || f.transitions.own().any(|t| t.script_id == id)
             })
             .map(|(f, _)| f.name)
+            .chain(all_lights)
             .chain(
                 db::presets(&db)?
                     .into_iter()

@@ -10,14 +10,23 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { Code2, Lightbulb, ListMusic, LogOut, WifiOff } from "lucide-react";
+import {
+  Code2,
+  Lightbulb,
+  ListMusic,
+  LogOut,
+  Settings,
+  WifiOff,
+} from "lucide-react";
 import { api, post, type AppState, type AuthStatus } from "./api";
 import { startLive, useConnected, useOnChange } from "./live";
 import { Button, cx, ToastProvider } from "./components/ui";
 import { LightsPage } from "./pages/Lights";
 import { LightPage } from "./pages/Light";
 import { EffectsPage } from "./pages/Effects";
-import { PlaylistsPage } from "./pages/Playlists";
+import { PlaylistPage, PlaylistsPage } from "./pages/Playlists";
+import { LightSettingsPage } from "./pages/LightSettings";
+import { SettingsPage } from "./pages/Settings";
 import "./styles.css";
 
 const EditorPage = lazy(() =>
@@ -28,7 +37,8 @@ const EditorPage = lazy(() =>
 
 const RouteContext = createContext<{
   path: string;
-  navigate: (to: string) => void;
+  /** `replace` swaps the current history entry (after creating something). */
+  navigate: (to: string, options?: { replace?: boolean }) => void;
 }>({
   path: "/",
   navigate: () => {},
@@ -42,16 +52,19 @@ export function Link({
   to,
   className,
   children,
+  "aria-label": ariaLabel,
 }: {
   to: string;
   className?: string;
   children: ReactNode;
+  "aria-label"?: string;
 }) {
   const { navigate } = useRoute();
   return (
     <a
       href={to}
       className={className}
+      aria-label={ariaLabel}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();
@@ -140,6 +153,18 @@ function Shell({ children, user }: { children: ReactNode; user: string }) {
               </span>
             )}
             <span className="hidden text-sm text-muted sm:block">{user}</span>
+            <Link
+              to="/settings"
+              aria-label="Settings"
+              className={cx(
+                "inline-flex h-8 items-center justify-center rounded-xl px-3 transition",
+                path === "/settings"
+                  ? "bg-raised text-white"
+                  : "text-muted hover:bg-raised hover:text-white",
+              )}
+            >
+              <Settings size={16} />
+            </Link>
             <Button
               variant="ghost"
               size="sm"
@@ -225,7 +250,10 @@ function SignIn({ auth }: { auth: AuthStatus }) {
 function Pages() {
   const { path } = useRoute();
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts[0] === "lights" && parts[1] && parts[2] === "settings")
+    return <LightSettingsPage id={parts[1]} />;
   if (parts[0] === "lights" && parts[1]) return <LightPage id={parts[1]} />;
+  if (parts[0] === "settings") return <SettingsPage />;
   if (parts[0] === "effects" && parts[1])
     return (
       <Suspense
@@ -239,6 +267,8 @@ function Pages() {
       </Suspense>
     );
   if (parts[0] === "effects") return <EffectsPage />;
+  if (parts[0] === "playlists" && parts[1])
+    return <PlaylistPage key={parts[1]} id={parts[1]} />;
   if (parts[0] === "playlists") return <PlaylistsPage />;
   return <LightsPage />;
 }
@@ -254,11 +284,15 @@ function App() {
     addEventListener("popstate", onPop);
     return () => removeEventListener("popstate", onPop);
   }, []);
-  const navigate = useCallback((to: string) => {
-    history.pushState(null, "", to);
-    setPath(new URL(to, location.href).pathname);
-    scrollTo({ top: 0 });
-  }, []);
+  const navigate = useCallback(
+    (to: string, options?: { replace?: boolean }) => {
+      if (options?.replace) history.replaceState(null, "", to);
+      else history.pushState(null, "", to);
+      setPath(new URL(to, location.href).pathname);
+      scrollTo({ top: 0 });
+    },
+    [],
+  );
 
   const reload = useCallback(async () => {
     try {

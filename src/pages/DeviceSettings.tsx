@@ -24,7 +24,6 @@ import {
   type Outlier,
   type Range,
 } from "../ranges";
-import { useStatus } from "../live";
 import { Link, useApp } from "../main";
 import {
   Badge,
@@ -38,35 +37,6 @@ import {
   useAction,
 } from "../components/ui";
 import { outputLabel, statusTone } from "./Lights";
-
-/** Settings for one string, opened from its lights. */
-export function DeviceSettingsDialog({
-  deviceId,
-  onClose,
-}: {
-  deviceId: string;
-  onClose: () => void;
-}) {
-  const { state } = useApp();
-  const status = useStatus();
-  const device = state.devices.find((d) => d.id === deviceId);
-  if (!device) return null;
-  return (
-    <Dialog
-      open
-      onOpenChange={(v) => !v && onClose()}
-      title={`${device.name} settings`}
-      description="The Twinkly string behind this light: connection, output and how its LEDs are split into lights."
-      wide
-    >
-      <DeviceCard
-        device={device}
-        status={status[device.id] ?? state.status[device.id]}
-        onRemoved={onClose}
-      />
-    </Dialog>
-  );
-}
 
 export function AddDevice({
   open,
@@ -141,7 +111,8 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function DeviceCard({
+/** Settings for one string, shown with each of its lights' settings. */
+export function StringSettings({
   device,
   status,
   onRemoved,
@@ -611,7 +582,7 @@ function LightsOnString({
         {saved.map((r) => (
           <Link
             key={r.id}
-            to={`/lights/${encodeURIComponent(r.id)}`}
+            to={`/lights/${encodeURIComponent(r.id)}/settings`}
             className="flex items-center justify-between gap-3 rounded-xl bg-night px-4 py-3 ring-1 ring-line hover:ring-glow/40"
           >
             <span className="font-medium">{r.name}</span>
@@ -653,7 +624,7 @@ function LightsOnString({
         {draft.map((r, i) => (
           <li key={r.id}>
             <Link
-              to={`/lights/${encodeURIComponent(r.id)}`}
+              to={`/lights/${encodeURIComponent(r.id)}/settings`}
               className="flex items-center gap-3 rounded-xl bg-night px-4 py-2.5 ring-1 ring-line hover:ring-glow/40"
             >
               <Dot color={colorOf(i)} />

@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   CalendarClock,
   Check,
   ListMusic,
+  Play,
   Plus,
   Shuffle,
   Trash2,
@@ -21,8 +23,9 @@ import {
   type Season,
   type TransitionSpec,
 } from "../api";
-import { GRID, useGallery, type Gallery } from "../live";
-import { useApp } from "../main";
+import { frames as frames0, GRID, useGallery, type Gallery } from "../live";
+import { Link, useApp, useRoute } from "../main";
+import { Mirror } from "../components/Mirror";
 import { EffectCard, Thumb } from "../components/EffectCard";
 import { TransitionList } from "../components/TransitionList";
 import { CategoryChips, groupByCategory } from "../components/Categories";
@@ -31,7 +34,6 @@ import {
   Button,
   Card,
   cx,
-  Dialog,
   Field,
   Input,
   Select,
@@ -39,12 +41,16 @@ import {
   useAction,
 } from "../components/ui";
 
-/** Thumbnails render on the first mapped light, like the effect gallery. */
+/**
+ * Thumbnails render on a light's layout: the first mapped light by default,
+ * the 10 × 21 grid for "".
+ */
 export function useThumbnails(fixtureId?: string) {
   const { state } = useApp();
-  const light = fixtureId
-    ? state.fixtures.find((f) => f.fixture.id === fixtureId)
-    : state.fixtures.find((f) => f.layout?.points.length);
+  const light =
+    fixtureId === undefined
+      ? state.fixtures.find((f) => f.layout?.points.length)
+      : state.fixtures.find((f) => f.fixture.id === fixtureId);
   const layout = light?.layout?.points.length
     ? light.layout
     : { points: GRID, aspect: 1 };
@@ -125,8 +131,8 @@ const heading = "text-[13px] font-semibold tracking-wide text-muted uppercase";
 
 export function PlaylistsPage() {
   const { state } = useApp();
+  const { navigate } = useRoute();
   const { layout, frames } = useThumbnails();
-  const [editing, setEditing] = useState<Playlist | "new" | null>(null);
   const seasonal = state.playlists.filter((p) => p.season);
   const other = state.playlists.filter((p) => !p.season);
   const grid = (list: Playlist[]) => (
@@ -137,7 +143,7 @@ export function PlaylistsPage() {
           playlist={p}
           frames={frames}
           layout={layout}
-          onClick={() => setEditing(p)}
+          onClick={() => navigate(`/playlists/${encodeURIComponent(p.id)}`)}
         />
       ))}
     </div>
@@ -152,7 +158,7 @@ export function PlaylistsPage() {
             season starts and step aside when it ends.
           </p>
         </div>
-        <Button variant="primary" onClick={() => setEditing("new")}>
+        <Button variant="primary" onClick={() => navigate("/playlists/new")}>
           <Plus size={16} /> New
         </Button>
       </div>
@@ -168,24 +174,25 @@ export function PlaylistsPage() {
           {grid(seasonal)}
         </section>
       )}
-      {editing && (
-        <Dialog
-          open
-          wide
-          onOpenChange={(v) => !v && setEditing(null)}
-          title={editing === "new" ? "New playlist" : editing.name}
-          description="Effects play one after another, each for its own time."
-        >
-          <PlaylistEditor
-            playlist={editing === "new" ? null : editing}
-            frames={frames}
-            layout={layout}
-            onDone={() => setEditing(null)}
-          />
-        </Dialog>
-      )}
     </div>
   );
+}
+
+/** One playlist, or a new one for `id` "new". */
+export function PlaylistPage({ id }: { id: string }) {
+  const { state } = useApp();
+  const playlist = state.playlists.find((p) => p.id === id);
+  if (id !== "new" && !playlist) {
+    return (
+      <div className="py-20 text-center text-muted">
+        This playlist doesn't exist.{" "}
+        <Link to="/playlists" className="text-glow">
+          Back to playlists
+        </Link>
+      </div>
+    );
+  }
+  return <PlaylistEditor playlist={playlist ?? null} />;
 }
 
 type SeasonKind = "none" | "dates" | "easter" | "midsummer";
@@ -199,19 +206,22 @@ function seasonKind(s: Season | null): SeasonKind {
 const smallInput =
   "h-8 rounded-lg bg-night px-2 text-xs text-white ring-1 ring-line focus:ring-glow/60 focus:outline-none";
 
-function PlaylistEditor({
-  playlist,
-  frames,
-  layout,
-  onDone,
-}: {
-  playlist: Playlist | null;
-  frames: Gallery;
-  layout: FixtureLayout;
-  onDone: () => void;
-}) {
+function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
   const { state, reload } = useApp();
+  const { navigate } = useRoute();
   const { run, busy } = useAction();
+  const mapped = state.fixtures.filter((f) => f.layout?.points.length);
+  // Previews render on a light playing this playlist, or the first mapped one.
+  const [lightId, setLightId] = useState(
+    () =>
+      (
+        mapped.find((f) => playlist && f.state.playlistId === playlist.id) ??
+        mapped[0]
+      )?.fixture.id ?? "",
+  );
+  const light = state.fixtures.find((f) => f.fixture.id === lightId);
+  const { layout, frames } = useThumbnails(lightId);
+  const device = state.devices.find((d) => d.id === light?.fixture.deviceId);
   const [name, setName] = useState(playlist?.name ?? "");
   const [entries, setEntries] = useState<PlaylistEntry[]>(
     playlist?.entries ?? [],
@@ -220,7 +230,6 @@ function PlaylistEditor({
   const [transitions, setTransitions] = useState<TransitionSpec[]>(
     playlist?.transitions ?? [],
   );
-  const light = state.fixtures.find((f) => f.layout?.points.length);
   const transitionFrames = useGallery("transition", light?.fixture.id);
   const [season, setSeason] = useState<Season | null>(playlist?.season ?? null);
   const [autoEnabled, setAutoEnabled] = useState(playlist?.autoEnabled ?? true);
@@ -248,353 +257,504 @@ function PlaylistEditor({
         ? s.midsummer
         : [0, 0];
 
-  const save = async () => {
-    const body = {
-      name,
-      entries,
-      shuffle,
-      transitions,
-      season,
-      autoEnabled,
-      lights,
-    };
-    const ok = await run(
+  const body = {
+    name,
+    entries,
+    shuffle,
+    transitions,
+    season,
+    autoEnabled,
+    lights,
+  };
+  const dirty =
+    !playlist ||
+    // Only playlists with a season are scheduled.
+    JSON.stringify({ ...body, autoEnabled: autoEnabled && !!season }) !==
+      JSON.stringify({
+        name: playlist.name,
+        entries: playlist.entries,
+        shuffle: playlist.shuffle,
+        transitions: playlist.transitions,
+        season: playlist.season,
+        autoEnabled: playlist.autoEnabled,
+        lights: playlist.lights,
+      });
+
+  /** Saves; a new playlist gets its own page. Returns its id when saved. */
+  const save = async (message = "Playlist saved") => {
+    const saved = await run(
       () =>
         playlist
-          ? put(`/playlists/${encodeURIComponent(playlist.id)}`, body)
-          : post("/playlists", body),
-      "Playlist saved",
+          ? put<Playlist>(`/playlists/${encodeURIComponent(playlist.id)}`, body)
+          : post<Playlist>("/playlists", body),
+      message,
     );
-    if (ok) {
-      await reload();
-      onDone();
-    }
+    if (!saved) return undefined;
+    await reload();
+    if (!playlist)
+      navigate(`/playlists/${encodeURIComponent(saved.id)}`, { replace: true });
+    return saved.id;
   };
+
+  const playing =
+    !!playlist && !!light && light.state.playlistId === playlist.id;
+  const play = async () => {
+    if (!light) return;
+    const id = dirty ? await save("Saved") : playlist?.id;
+    if (!id) return;
+    if (
+      await run(
+        () =>
+          post(`/fixtures/${encodeURIComponent(light.fixture.id)}/state`, {
+            playlist: id,
+            power: true,
+          }),
+        `Playing on ${light.fixture.name}`,
+      )
+    )
+      reload();
+  };
+  const first = entries.find((e) => e.enabled);
+  const liveSource = useCallback(() => frames0.get(lightId), [lightId]);
 
   return (
     <div className="space-y-6">
-      <Field label="Name">
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Cosy evenings"
-        />
-      </Field>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[13px] font-medium text-soft">Effects</span>
-          <label className="flex items-center gap-2 text-sm text-soft">
-            <Shuffle size={14} className="text-muted" /> Shuffle
-            <Toggle label="Shuffle" checked={shuffle} onChange={setShuffle} />
-          </label>
+      <div className="flex items-center gap-3">
+        <Link
+          to="/playlists"
+          className="rounded-xl p-2 text-muted hover:bg-raised hover:text-white"
+          aria-label="Back to playlists"
+        >
+          <ArrowLeft size={18} />
+        </Link>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-2xl font-semibold tracking-tight">
+            {playlist?.name ?? "New playlist"}
+          </h1>
+          <p className="truncate text-sm text-muted">
+            Effects play one after another, each for its own time.
+          </p>
         </div>
-        {entries.length === 0 && (
-          <p className="text-sm text-muted">No effects yet.</p>
-        )}
-        <ol className="space-y-2">
-          {entries.map((e, i) => {
-            const script = effects.find((s) => s.id === e.scriptId);
-            const label = script?.name ?? e.scriptId;
-            return (
-              <li
-                key={i}
-                className={cx(
-                  "space-y-2 rounded-xl bg-night/60 p-2.5 ring-1 ring-line",
-                  !e.enabled && "opacity-60",
-                )}
+        <Button
+          variant="primary"
+          disabled={busy || !name.trim() || !dirty}
+          onClick={() => save()}
+        >
+          Save
+        </Button>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:grid-rows-[auto_1fr] lg:items-start">
+        <Card className="overflow-hidden lg:col-start-2 lg:row-start-1">
+          {playing && light?.layout?.points.length ? (
+            <div className="bg-gradient-to-b from-night to-ink">
+              <Mirror
+                points={light.layout.points}
+                aspect={light.layout.aspect}
+                source={liveSource}
+                className="h-56"
+              />
+            </div>
+          ) : first ? (
+            <Thumb
+              scriptId={first.scriptId}
+              frames={frames}
+              layout={layout}
+              className="h-56"
+            />
+          ) : (
+            <div className="flex h-56 items-center justify-center bg-night text-muted">
+              <ListMusic size={32} />
+            </div>
+          )}
+          <div className="space-y-4 border-t border-line p-4">
+            <Field
+              label="Preview on"
+              hint={
+                playing
+                  ? `Live: ${light?.fixture.name} is playing it.`
+                  : "Thumbnails show each effect on this light."
+              }
+            >
+              <Select
+                label="Preview on"
+                value={lightId}
+                onChange={setLightId}
+                options={[
+                  ...mapped.map((f) => ({
+                    value: f.fixture.id,
+                    label: f.fixture.name,
+                  })),
+                  { value: "", label: "A 10 × 21 grid" },
+                ]}
+              />
+            </Field>
+            {light && (
+              <Button
+                className="w-full"
+                variant={playing ? "primary" : "subtle"}
+                disabled={
+                  busy ||
+                  playing ||
+                  !device?.enabled ||
+                  !name.trim() ||
+                  !entries.some((e) => e.enabled)
+                }
+                onClick={play}
               >
-                <Thumb
-                  scriptId={e.scriptId}
-                  frames={frames}
-                  layout={layout}
-                  className="h-28 overflow-hidden rounded-lg"
+                {playing ? <Check size={16} /> : <Play size={16} />}
+                {playing
+                  ? `Playing on ${light.fixture.name}`
+                  : `Play on ${light.fixture.name}`}
+              </Button>
+            )}
+            <Field label="Name">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Cosy evenings"
+              />
+            </Field>
+          </div>
+        </Card>
+
+        <div className="space-y-6 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[13px] font-medium text-soft">Effects</span>
+              <label className="flex items-center gap-2 text-sm text-soft">
+                <Shuffle size={14} className="text-muted" /> Shuffle
+                <Toggle
+                  label="Shuffle"
+                  checked={shuffle}
+                  onChange={setShuffle}
                 />
-                <div className="flex items-center gap-3 px-1">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {label}
-                  </span>
-                  <Toggle
-                    label={`Play ${label}`}
-                    checked={e.enabled}
-                    onChange={(v) => update(i, { enabled: v })}
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <select
-                    aria-label={`${label} preset`}
-                    className={cx(smallInput, "min-w-0 flex-1")}
-                    value={e.presetId ?? ""}
-                    onChange={(ev) => {
-                      const preset = state.presets.find(
-                        (p) => p.id === ev.target.value,
-                      );
-                      update(
-                        i,
-                        preset
-                          ? {
-                              presetId: preset.id,
-                              scriptId: preset.look.scriptId,
-                              params: preset.look.params,
-                              colors: preset.look.colors,
-                            }
-                          : { presetId: null },
-                      );
-                    }}
+              </label>
+            </div>
+            {entries.length === 0 && (
+              <p className="text-sm text-muted">No effects yet.</p>
+            )}
+            <ol className="space-y-2">
+              {entries.map((e, i) => {
+                const script = effects.find((s) => s.id === e.scriptId);
+                const label = script?.name ?? e.scriptId;
+                return (
+                  <li
+                    key={i}
+                    className={cx(
+                      "space-y-2 rounded-xl bg-night/60 p-2.5 ring-1 ring-line",
+                      !e.enabled && "opacity-60",
+                    )}
                   >
-                    <option value="">Default settings</option>
-                    {state.presets.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        Preset: {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min={1}
-                    aria-label={`${label} seconds`}
-                    className={cx(smallInput, "w-16 text-right")}
-                    value={e.durationS}
-                    onChange={(ev) =>
-                      update(i, {
-                        durationS: Math.max(1, Number(ev.target.value) || 1),
-                      })
-                    }
-                  />
-                  <span className="text-xs text-muted">s</span>
+                    <Thumb
+                      scriptId={e.scriptId}
+                      frames={frames}
+                      layout={layout}
+                      className="h-28 overflow-hidden rounded-lg"
+                    />
+                    <div className="flex items-center gap-3 px-1">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {label}
+                      </span>
+                      <Toggle
+                        label={`Play ${label}`}
+                        checked={e.enabled}
+                        onChange={(v) => update(i, { enabled: v })}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        aria-label={`${label} preset`}
+                        className={cx(smallInput, "min-w-0 flex-1")}
+                        value={e.presetId ?? ""}
+                        onChange={(ev) => {
+                          const preset = state.presets.find(
+                            (p) => p.id === ev.target.value,
+                          );
+                          update(
+                            i,
+                            preset
+                              ? {
+                                  presetId: preset.id,
+                                  scriptId: preset.look.scriptId,
+                                  params: preset.look.params,
+                                  colors: preset.look.colors,
+                                }
+                              : { presetId: null },
+                          );
+                        }}
+                      >
+                        <option value="">Default settings</option>
+                        {state.presets.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            Preset: {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        aria-label={`${label} seconds`}
+                        className={cx(smallInput, "w-16 text-right")}
+                        value={e.durationS}
+                        onChange={(ev) =>
+                          update(i, {
+                            durationS: Math.max(
+                              1,
+                              Number(ev.target.value) || 1,
+                            ),
+                          })
+                        }
+                      />
+                      <span className="text-xs text-muted">s</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="px-2"
+                        aria-label={`Move ${label} up`}
+                        disabled={i === 0}
+                        onClick={() => move(i, -1)}
+                      >
+                        <ArrowUp size={14} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="px-2"
+                        aria-label={`Move ${label} down`}
+                        disabled={i === entries.length - 1}
+                        onClick={() => move(i, 1)}
+                      >
+                        <ArrowDown size={14} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="px-2"
+                        aria-label={`Remove ${label}`}
+                        onClick={() =>
+                          setEntries(entries.filter((_, j) => j !== i))
+                        }
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+            {adding ? (
+              <Card className="space-y-3 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Add an effect</span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="px-2"
-                    aria-label={`Move ${label} up`}
-                    disabled={i === 0}
-                    onClick={() => move(i, -1)}
-                  >
-                    <ArrowUp size={14} />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="px-2"
-                    aria-label={`Move ${label} down`}
-                    disabled={i === entries.length - 1}
-                    onClick={() => move(i, 1)}
-                  >
-                    <ArrowDown size={14} />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="px-2"
-                    aria-label={`Remove ${label}`}
-                    onClick={() =>
-                      setEntries(entries.filter((_, j) => j !== i))
-                    }
+                    aria-label="Close the effect picker"
+                    onClick={() => setAdding(false)}
                   >
                     <X size={14} />
                   </Button>
                 </div>
-              </li>
-            );
-          })}
-        </ol>
-        {adding ? (
-          <Card className="space-y-3 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Add an effect</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Close the effect picker"
-                onClick={() => setAdding(false)}
-              >
-                <X size={14} />
+                <CategoryChips
+                  groups={groups}
+                  value={category}
+                  onChange={setCategory}
+                  all={false}
+                />
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {(groups.find(([c]) => c === category)?.[1] ?? []).map(
+                    (s) => (
+                      <EffectCard
+                        key={s.id}
+                        script={s}
+                        frames={frames}
+                        layout={layout}
+                        onClick={() => {
+                          setEntries([
+                            ...entries,
+                            {
+                              scriptId: s.id,
+                              presetId: null,
+                              params: {},
+                              colors: [],
+                              durationS: 60,
+                              enabled: true,
+                            },
+                          ]);
+                          setAdding(false);
+                        }}
+                      />
+                    ),
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <Button size="sm" onClick={() => setAdding(true)}>
+                <Plus size={14} /> Add effect
               </Button>
-            </div>
-            <CategoryChips
-              groups={groups}
-              value={category}
-              onChange={setCategory}
-              all={false}
-            />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {(groups.find(([c]) => c === category)?.[1] ?? []).map((s) => (
-                <EffectCard
-                  key={s.id}
-                  script={s}
-                  frames={frames}
-                  layout={layout}
-                  onClick={() => {
-                    setEntries([
-                      ...entries,
-                      {
-                        scriptId: s.id,
-                        presetId: null,
-                        params: {},
-                        colors: [],
-                        durationS: 60,
-                        enabled: true,
-                      },
-                    ]);
-                    setAdding(false);
-                  }}
-                />
-              ))}
-            </div>
-          </Card>
-        ) : (
-          <Button size="sm" onClick={() => setAdding(true)}>
-            <Plus size={14} /> Add effect
-          </Button>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <span className="block text-[13px] font-medium text-soft">
-          Transitions between effects
-        </span>
-        <TransitionList
-          label="Between effects"
-          items={transitions}
-          onChange={setTransitions}
-          frames={transitionFrames}
-          layout={layout}
-          empty="Each light uses its own transitions for changing effect."
-        />
-      </div>
-
-      <div className="space-y-3">
-        <Field label="Season">
-          <Select
-            label="Season"
-            value={kind}
-            onChange={(v) => {
-              const k = v as SeasonKind;
-              const [a, b] = offsets(season);
-              setSeason(
-                k === "none"
-                  ? null
-                  : k === "dates"
-                    ? { from: "12-01", to: "12-31" }
-                    : k === "easter"
-                      ? { easter: [a, b] }
-                      : { midsummer: [a, b] },
-              );
-            }}
-            options={[
-              { value: "none", label: "Any time" },
-              { value: "dates", label: "Between two dates" },
-              { value: "easter", label: "Around Easter" },
-              { value: "midsummer", label: "Around Midsummer Eve" },
-            ]}
-          />
-        </Field>
-        {season && "from" in season && (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="From (MM-DD)">
-              <Input
-                value={season.from}
-                inputMode="numeric"
-                onChange={(e) => setSeason({ ...season, from: e.target.value })}
-              />
-            </Field>
-            <Field label="To (MM-DD)">
-              <Input
-                value={season.to}
-                inputMode="numeric"
-                onChange={(e) => setSeason({ ...season, to: e.target.value })}
-              />
-            </Field>
+            )}
           </div>
-        )}
-        {season && !("from" in season) && (
-          <div className="grid grid-cols-2 gap-3">
-            {(["From", "To"] as const).map((label, i) => (
-              <Field key={label} label={`${label} (days)`}>
-                <Input
-                  type="number"
-                  value={offsets(season)[i]}
-                  onChange={(e) => {
-                    const days = [...offsets(season)] as [number, number];
-                    days[i] = Number(e.target.value) || 0;
-                    setSeason(
-                      "easter" in season
-                        ? { easter: days }
-                        : { midsummer: days },
-                    );
-                  }}
-                />
-              </Field>
-            ))}
-          </div>
-        )}
-        {season && <p className="text-xs text-muted">{seasonLabel(season)}</p>}
-      </div>
 
-      {season && (
-        <div className="space-y-3 rounded-xl bg-night/60 p-4 ring-1 ring-line">
-          <label className="flex items-center justify-between gap-3">
-            <span>
-              <span className="block text-sm font-medium">Start by itself</span>
-              <span className="block text-xs text-muted">
-                At midnight on the first day the lights switch to it, and on the
-                day after the last they go back to what they showed, unless
-                someone picked something else meanwhile. Power isn't touched.
-              </span>
+          <div className="space-y-2">
+            <span className="block text-[13px] font-medium text-soft">
+              Transitions between effects
             </span>
-            <Toggle
-              label="Schedule"
-              checked={autoEnabled}
-              onChange={setAutoEnabled}
+            <TransitionList
+              label="Between effects"
+              items={transitions}
+              onChange={setTransitions}
+              frames={transitionFrames}
+              layout={layout}
+              empty="Each light uses its own transitions for changing effect."
             />
-          </label>
-          {autoEnabled && (
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 text-sm text-soft">
+          </div>
+        </div>
+
+        <Card className="space-y-4 p-4 lg:col-start-2 lg:row-start-2">
+          <div className="space-y-3">
+            <Field label="Season">
+              <Select
+                label="Season"
+                value={kind}
+                onChange={(v) => {
+                  const k = v as SeasonKind;
+                  const [a, b] = offsets(season);
+                  setSeason(
+                    k === "none"
+                      ? null
+                      : k === "dates"
+                        ? { from: "12-01", to: "12-31" }
+                        : k === "easter"
+                          ? { easter: [a, b] }
+                          : { midsummer: [a, b] },
+                  );
+                }}
+                options={[
+                  { value: "none", label: "Any time" },
+                  { value: "dates", label: "Between two dates" },
+                  { value: "easter", label: "Around Easter" },
+                  { value: "midsummer", label: "Around Midsummer Eve" },
+                ]}
+              />
+            </Field>
+            {season && "from" in season && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="From (MM-DD)">
+                  <Input
+                    value={season.from}
+                    inputMode="numeric"
+                    onChange={(e) =>
+                      setSeason({ ...season, from: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="To (MM-DD)">
+                  <Input
+                    value={season.to}
+                    inputMode="numeric"
+                    onChange={(e) =>
+                      setSeason({ ...season, to: e.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+            )}
+            {season && !("from" in season) && (
+              <div className="grid grid-cols-2 gap-3">
+                {(["From", "To"] as const).map((label, i) => (
+                  <Field key={label} label={`${label} (days)`}>
+                    <Input
+                      type="number"
+                      value={offsets(season)[i]}
+                      onChange={(e) => {
+                        const days = [...offsets(season)] as [number, number];
+                        days[i] = Number(e.target.value) || 0;
+                        setSeason(
+                          "easter" in season
+                            ? { easter: days }
+                            : { midsummer: days },
+                        );
+                      }}
+                    />
+                  </Field>
+                ))}
+              </div>
+            )}
+            {season && (
+              <p className="text-xs text-muted">{seasonLabel(season)}</p>
+            )}
+          </div>
+
+          {season && (
+            <div className="space-y-3 rounded-xl bg-night/60 p-4 ring-1 ring-line">
+              <label className="flex items-center justify-between gap-3">
+                <span>
+                  <span className="block text-sm font-medium">
+                    Start by itself
+                  </span>
+                  <span className="block text-xs text-muted">
+                    At midnight on the first day the lights switch to it, and on
+                    the day after the last they go back to what they showed,
+                    unless someone picked something else meanwhile. Power isn't
+                    touched.
+                  </span>
+                </span>
                 <Toggle
-                  label="All lights"
-                  checked={lights === null}
-                  onChange={(v) => setLights(v ? null : [])}
+                  label="Schedule"
+                  checked={autoEnabled}
+                  onChange={setAutoEnabled}
                 />
-                All lights
               </label>
-              {lights !== null && (
-                <div className="flex flex-wrap gap-2">
-                  {state.fixtures.map(({ fixture }) => {
-                    const on = lights.includes(fixture.id);
-                    return (
-                      <button
-                        key={fixture.id}
-                        onClick={() =>
-                          setLights(
-                            on
-                              ? lights.filter((l) => l !== fixture.id)
-                              : [...lights, fixture.id],
-                          )
-                        }
-                        className={cx(
-                          "rounded-full px-3.5 py-1.5 text-[13px] font-medium ring-1 transition",
-                          on
-                            ? "bg-glow/15 text-glow ring-glow/50"
-                            : "text-muted ring-line hover:text-white",
-                        )}
-                      >
-                        {fixture.name}
-                      </button>
-                    );
-                  })}
+              {autoEnabled && (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-3 text-sm text-soft">
+                    <Toggle
+                      label="All lights"
+                      checked={lights === null}
+                      onChange={(v) => setLights(v ? null : [])}
+                    />
+                    All lights
+                  </label>
+                  {lights !== null && (
+                    <div className="flex flex-wrap gap-2">
+                      {state.fixtures.map(({ fixture }) => {
+                        const on = lights.includes(fixture.id);
+                        return (
+                          <button
+                            key={fixture.id}
+                            onClick={() =>
+                              setLights(
+                                on
+                                  ? lights.filter((l) => l !== fixture.id)
+                                  : [...lights, fixture.id],
+                              )
+                            }
+                            className={cx(
+                              "rounded-full px-3.5 py-1.5 text-[13px] font-medium ring-1 transition",
+                              on
+                                ? "bg-glow/15 text-glow ring-glow/50"
+                                : "text-muted ring-line hover:text-white",
+                            )}
+                          >
+                            {fixture.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-        </div>
-      )}
+        </Card>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Button
           variant="primary"
-          disabled={busy || !name.trim()}
-          onClick={save}
+          disabled={busy || !name.trim() || !dirty}
+          onClick={() => save()}
         >
           Save playlist
         </Button>
@@ -612,7 +772,7 @@ function PlaylistEditor({
                 )
               ) {
                 await reload();
-                onDone();
+                navigate("/playlists", { replace: true });
               }
             }}
           >

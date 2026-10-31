@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Bookmark,
@@ -18,24 +18,19 @@ import {
   paramValues,
   post,
   put,
-  type Fixture,
   type FixtureState,
-  type LayoutMode,
   type Playlist,
   type Preset,
-  type TransitionSpec,
 } from "../api";
-import { frames, GRID, useGallery, useStatus } from "../live";
+import { frames, useGallery, useStatus } from "../live";
 import { EffectCard } from "../components/EffectCard";
-import { TransitionList } from "../components/TransitionList";
 import {
   categoryOf,
   CategoryChips,
   groupByCategory,
 } from "../components/Categories";
-import { DeviceSettingsDialog } from "./DeviceSettings";
 import { PlaylistCard } from "./Playlists";
-import { Link, useApp, useRoute } from "../main";
+import { Link, useApp } from "../main";
 import { Mirror } from "../components/Mirror";
 import { ColorControls, ParamControls } from "../components/controls";
 import {
@@ -47,7 +42,6 @@ import {
   Field,
   Input,
   Section,
-  Select,
   Slider,
   Toggle,
   useAction,
@@ -123,7 +117,6 @@ function Light({
         entryLook.colors.map((c) => c.toLowerCase()),
         item.state.look.colors.map((c) => c.toLowerCase()),
       ) === false);
-  const [settings, setSettings] = useState(false);
 
   // Local copies so sliders feel instant; the server echo replaces them.
   const [power, setPower] = useState(item.state.power);
@@ -192,20 +185,13 @@ function Light({
             status.fps > 0 &&
             ` · ${status.fps.toFixed(0)} fps`}
         </Badge>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={`${device?.name ?? fixture.name} settings`}
-          onClick={() => setSettings(true)}
+        <Link
+          to={`/lights/${encodeURIComponent(fixture.id)}/settings`}
+          aria-label={`${fixture.name} settings`}
+          className="rounded-xl p-2 text-muted hover:bg-raised hover:text-white"
         >
           <Settings2 size={16} />
-        </Button>
-        {settings && (
-          <DeviceSettingsDialog
-            deviceId={fixture.deviceId}
-            onClose={() => setSettings(false)}
-          />
-        )}
+        </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -443,9 +429,6 @@ function Light({
           </Card>
         </Section>
       )}
-
-      <Transitions fixture={fixture} />
-      <LedSettings fixture={fixture} />
     </div>
   );
 }
@@ -671,271 +654,6 @@ function PresetEditor({
         </Button>
       </div>
     </div>
-  );
-}
-
-const SLOTS = [
-  ["on", "Turning on", "Comes on instantly."],
-  ["off", "Turning off", "Goes off instantly."],
-  ["change", "Changing effect", "Changes instantly."],
-] as const;
-
-function Transitions({ fixture }: { fixture: Fixture }) {
-  const { state, reload } = useApp();
-  const { run } = useAction();
-  const [t, setT] = useState(fixture.transitions);
-  useEffect(() => setT(fixture.transitions), [fixture.transitions]);
-  const frames = useGallery("transition", fixture.id);
-  const mapped = state.fixtures.find((f) => f.fixture.id === fixture.id);
-  const layout = mapped?.layout?.points.length
-    ? mapped.layout
-    : { points: GRID, aspect: 1 };
-  const save = useThrottled(
-    useCallback(
-      async (next: Fixture["transitions"]) => {
-        await put(`/fixtures/${encodeURIComponent(fixture.id)}`, {
-          ...fixture,
-          transitions: next,
-        });
-        reload();
-      },
-      [fixture, reload],
-    ),
-    500,
-  );
-  const update =
-    (key: keyof Fixture["transitions"]) => (list: TransitionSpec[]) => {
-      const next = { ...t, [key]: list };
-      setT(next);
-      save(next);
-    };
-  const preview = (patch: Record<string, unknown>) =>
-    run(() => post(`/fixtures/${encodeURIComponent(fixture.id)}/state`, patch));
-  return (
-    <Section
-      title="Transitions"
-      action={
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => preview({ power: false })}
-          >
-            Try off
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => preview({ power: true })}
-          >
-            Try on
-          </Button>
-        </div>
-      }
-    >
-      <div className="grid gap-4 lg:grid-cols-3">
-        {SLOTS.map(([key, label, empty]) => (
-          <Card key={key} className="space-y-3 p-4">
-            <span className="block font-medium">{label}</span>
-            <TransitionList
-              label={label}
-              items={t[key]}
-              onChange={update(key)}
-              frames={frames}
-              layout={layout}
-              empty={empty}
-            />
-          </Card>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-function LedSettings({ fixture }: { fixture: Fixture }) {
-  const { state, reload } = useApp();
-  const { navigate } = useRoute();
-  const { run, busy } = useAction();
-  const device = state.devices.find((d) => d.id === fixture.deviceId);
-  const [draft, setDraft] = useState(fixture);
-  useEffect(() => setDraft(fixture), [fixture]);
-  const changed = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(fixture),
-    [draft, fixture],
-  );
-  const mode = draft.layout.kind;
-  const siblings = state.fixtures.filter(
-    (f) => f.fixture.deviceId === fixture.deviceId,
-  ).length;
-  return (
-    <Section title="LEDs and layout">
-      <Card className="space-y-5 p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name">
-            <Input
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            />
-          </Field>
-          <Field
-            label="MQTT id"
-            hint="homectl sees the light under this id; it can't be changed."
-          >
-            <Input value={draft.id} disabled />
-          </Field>
-          <Field label="First LED">
-            <Input
-              type="number"
-              min={0}
-              value={draft.start}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  start: Math.max(0, Number(e.target.value)),
-                })
-              }
-            />
-          </Field>
-          <Field
-            label="Number of LEDs"
-            hint={
-              device ? `${device.name} has ${device.ledCount} LEDs.` : undefined
-            }
-          >
-            <Input
-              type="number"
-              min={1}
-              value={draft.count}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  count: Math.max(1, Number(e.target.value)),
-                })
-              }
-            />
-          </Field>
-          <Field label="Positions" hint="Where effects think each LED is.">
-            <Select
-              label="Positions"
-              value={mode}
-              options={[
-                { value: "device", label: "Mapped in the Twinkly app" },
-                { value: "linear", label: "A straight line" },
-                { value: "grid", label: "Hanging strands" },
-                { value: "along", label: "Along its length" },
-              ]}
-              onChange={(v) => {
-                const layout: LayoutMode =
-                  v === "grid"
-                    ? { kind: "grid", strand: 21, zigzag: false }
-                    : ({ kind: v } as LayoutMode);
-                setDraft({ ...draft, layout });
-              }}
-            />
-          </Field>
-          {draft.layout.kind === "grid" && (
-            <Field label="LEDs per strand">
-              <Input
-                type="number"
-                min={1}
-                value={draft.layout.strand}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    layout: {
-                      kind: "grid",
-                      strand: Math.max(1, Number(e.target.value)),
-                      zigzag:
-                        draft.layout.kind === "grid" && draft.layout.zigzag,
-                    },
-                  })
-                }
-              />
-            </Field>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-6">
-          <label className="flex items-center gap-3 text-sm text-soft">
-            <Toggle
-              label="Reversed"
-              checked={draft.reversed}
-              onChange={(v) => setDraft({ ...draft, reversed: v })}
-            />
-            Reverse LED order
-          </label>
-          <label className="flex items-center gap-3 text-sm text-soft">
-            <Toggle
-              label="Follow seasonal playlists"
-              checked={draft.seasonal}
-              onChange={(v) => setDraft({ ...draft, seasonal: v })}
-            />
-            Follow seasonal playlists
-          </label>
-          {draft.layout.kind === "grid" && (
-            <label className="flex items-center gap-3 text-sm text-soft">
-              <Toggle
-                label="Zigzag"
-                checked={draft.layout.zigzag}
-                onChange={(v) =>
-                  draft.layout.kind === "grid" &&
-                  setDraft({ ...draft, layout: { ...draft.layout, zigzag: v } })
-                }
-              />
-              Strands alternate direction
-            </label>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="primary"
-            disabled={!changed || busy}
-            onClick={async () => {
-              if (
-                await run(
-                  () =>
-                    put(`/fixtures/${encodeURIComponent(fixture.id)}`, draft),
-                  "Saved",
-                )
-              )
-                reload();
-            }}
-          >
-            Save
-          </Button>
-          {changed && (
-            <Button variant="ghost" onClick={() => setDraft(fixture)}>
-              Undo changes
-            </Button>
-          )}
-          {siblings > 1 && (
-            <Button
-              variant="danger"
-              className="ml-auto"
-              disabled={busy}
-              onClick={async () => {
-                if (
-                  !confirm(
-                    `Remove ${fixture.name}? Its LEDs will no longer be controlled.`,
-                  )
-                )
-                  return;
-                if (
-                  await run(
-                    () => del(`/fixtures/${encodeURIComponent(fixture.id)}`),
-                    "Removed",
-                  )
-                ) {
-                  await reload();
-                  navigate("/");
-                }
-              }}
-            >
-              <Trash2 size={14} /> Remove light
-            </Button>
-          )}
-        </div>
-      </Card>
-    </Section>
   );
 }
 

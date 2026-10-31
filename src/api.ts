@@ -95,6 +95,7 @@ export type LayoutMode =
   | { kind: "device" }
   | { kind: "linear" }
   | { kind: "grid"; strand: number; zigzag: boolean }
+  /** Along its length: LED order, following the string's own shape. */
   | { kind: "along" };
 
 export interface TransitionSpec {
@@ -111,17 +112,30 @@ export interface Fixture {
   count: number;
   reversed: boolean;
   layout: LayoutMode;
-  /** One of each list is picked at random each time; empty: instant. */
+  /**
+   * The light's own lists; null follows the transitions for all lights
+   * (`Settings.transitions`).
+   */
   transitions: {
-    on: TransitionSpec[];
-    off: TransitionSpec[];
-    change: TransitionSpec[];
+    on: TransitionSpec[] | null;
+    off: TransitionSpec[] | null;
+    change: TransitionSpec[] | null;
   };
   sort: number;
   /** Whether seasonal playlists switch this light over when their season starts. */
   seasonal: boolean;
   /** Effect size: above 1 features look bigger, below 1 smaller (0.25..4). */
   scale: number;
+}
+
+export type Slot = "on" | "off" | "change";
+
+/** One of each list is picked at random each time; empty: instant. */
+export type Transitions = Record<Slot, TransitionSpec[]>;
+
+export interface Settings {
+  /** Used by every light slot that has no list of its own. */
+  transitions: Transitions;
 }
 
 export interface Look {
@@ -226,6 +240,7 @@ export interface AppState {
   }[];
   presets: Preset[];
   playlists: Playlist[];
+  settings: Settings;
   scripts: ScriptInfo[];
   status: Record<string, DeviceStatus>;
   ai: boolean;

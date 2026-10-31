@@ -4,7 +4,7 @@ import { post, type AppState } from "../api";
 import { frames, useStatus } from "../live";
 import { Link, useApp } from "../main";
 import { Mirror } from "../components/Mirror";
-import { AddDevice, DeviceSettingsDialog } from "./DeviceSettings";
+import { AddDevice } from "./DeviceSettings";
 import {
   Badge,
   Button,
@@ -89,7 +89,6 @@ function LightCard({
   const playlist = state.playlists.find((p) => p.id === item.state.playlistId);
   const source = useCallback(() => frames.get(fixture.id), [fixture.id]);
   const disabled = !device?.enabled;
-  const [settings, setSettings] = useState(false);
   return (
     <Card className="group relative overflow-hidden transition hover:ring-glow/40">
       <Link to={`/lights/${encodeURIComponent(fixture.id)}`} className="block">
@@ -119,19 +118,13 @@ function LightCard({
           </div>
         </div>
       </Link>
-      <button
-        onClick={() => setSettings(true)}
-        aria-label={`${device?.name ?? fixture.name} settings`}
+      <Link
+        to={`/lights/${encodeURIComponent(fixture.id)}/settings`}
+        aria-label={`${fixture.name} settings`}
         className="absolute top-2.5 right-2.5 rounded-xl bg-ink/60 p-2 text-muted backdrop-blur transition hover:text-white"
       >
         <Settings2 size={16} />
-      </button>
-      {settings && (
-        <DeviceSettingsDialog
-          deviceId={fixture.deviceId}
-          onClose={() => setSettings(false)}
-        />
-      )}
+      </Link>
       <div className="space-y-3 p-4">
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -202,7 +195,7 @@ export function LightsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Lights</h1>
           <p className="mt-1 text-sm text-muted">
             What every string is showing right now. The gear on a light opens
-            its string's settings.
+            its settings.
           </p>
         </div>
         <Button onClick={() => setAdding(true)}>

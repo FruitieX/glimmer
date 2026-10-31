@@ -58,8 +58,10 @@ pub struct Fixture {
     pub reversed: bool,
     #[serde(default)]
     pub layout: LayoutMode,
+    /// The light's own transitions; a slot without a list follows the
+    /// transitions for all lights (`Settings::transitions`).
     #[serde(default)]
-    pub transitions: Transitions,
+    pub transitions: LightTransitions,
     #[serde(default)]
     pub sort: i64,
     /// Whether seasonal playlists switch this light over when their season starts.
@@ -180,6 +182,79 @@ impl Default for Transitions {
             change: TransitionChoice::one(TransitionSpec::new("fade", 1200, Value::Null)),
         }
     }
+}
+
+/// The three transition slots.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Slot {
+    On,
+    Off,
+    Change,
+}
+
+impl Transitions {
+    pub fn slot(&self, slot: Slot) -> &TransitionChoice {
+        match slot {
+            Slot::On => &self.on,
+            Slot::Off => &self.off,
+            Slot::Change => &self.change,
+        }
+    }
+}
+
+/// A light's transitions: each slot either has the light's own list or is
+/// `None` (sent as `null`) to follow the transitions for all lights, looked
+/// up whenever one is used.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LightTransitions {
+    #[serde(default)]
+    pub on: Option<TransitionChoice>,
+    #[serde(default)]
+    pub off: Option<TransitionChoice>,
+    #[serde(default)]
+    pub change: Option<TransitionChoice>,
+}
+
+impl LightTransitions {
+    pub fn slot(&self, slot: Slot) -> Option<&TransitionChoice> {
+        match slot {
+            Slot::On => self.on.as_ref(),
+            Slot::Off => self.off.as_ref(),
+            Slot::Change => self.change.as_ref(),
+        }
+    }
+
+    pub fn slot_mut(&mut self, slot: Slot) -> &mut Option<TransitionChoice> {
+        match slot {
+            Slot::On => &mut self.on,
+            Slot::Off => &mut self.off,
+            Slot::Change => &mut self.change,
+        }
+    }
+
+    /// The list a slot uses: the light's own, or the one for all lights.
+    pub fn effective<'a>(&'a self, slot: Slot, all: &'a Transitions) -> &'a TransitionChoice {
+        self.slot(slot).unwrap_or_else(|| all.slot(slot))
+    }
+
+    /// The light's own transitions (not the ones it follows).
+    pub fn own(&self) -> impl Iterator<Item = &TransitionSpec> {
+        [&self.on, &self.off, &self.change]
+            .into_iter()
+            .flatten()
+            .flat_map(|c| c.iter())
+    }
+}
+
+/// App-wide settings, each stored under its own key.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    /// Used by every light slot that has no list of its own.
+    #[serde(default)]
+    pub transitions: Transitions,
 }
 
 /// What a fixture shows when on: an effect with its settings.
@@ -426,6 +501,34 @@ mod tests {
             same.pick(Some(&spec("fade")), &mut rng),
             Some(&spec("fade"))
         );
+    }
+
+    #[test]
+    fn light_slots_follow_the_lists_for_all_lights() {
+        let all = Transitions::default();
+        let mut own = LightTransitions::default();
+        assert_eq!(own.effective(Slot::Change, &all), &all.change);
+        assert_eq!(own.own().count(), 0);
+        own.change = Some(TransitionChoice(vec![spec("iris"), spec("push")]));
+        own.off = Some(TransitionChoice::default());
+        assert_eq!(own.effective(Slot::Change, &all).0.len(), 2);
+        assert!(
+            own.effective(Slot::Off, &all).is_empty(),
+            "own empty: instant"
+        );
+        assert_eq!(own.effective(Slot::On, &all), &all.on);
+        assert_eq!(own.own().count(), 2);
+        // Followed slots are sent as null; older data (full lists) reads as own.
+        let v = serde_json::to_value(&own).unwrap();
+        assert_eq!(v["on"], Value::Null);
+        let old: LightTransitions = serde_json::from_value(json!({
+            "on": {"scriptId": "wipe", "durationMs": 1500},
+            "off": [],
+        }))
+        .unwrap();
+        assert_eq!(old.on.unwrap().0.len(), 1);
+        assert_eq!(old.off, Some(TransitionChoice::default()));
+        assert_eq!(old.change, None);
     }
 
     #[test]

@@ -9,7 +9,7 @@ use crate::{
     engine::{Command, Engine, Transition},
     model::{
         Device, Fixture, FixtureState, LayoutMode, Look, Playlist, PlaylistEntry, Preset,
-        Scheduled, ScriptSource, Selection, TransitionSpec,
+        Scheduled, ScriptSource, Selection, Settings, Slot, TransitionSpec,
     },
     playlist::{self, Run},
 };
@@ -139,6 +139,12 @@ impl App {
                 Some(asset)
             }));
         }
+        let transitions = db::settings(&db.lock().unwrap())
+            .map(|s| s.transitions)
+            .unwrap_or_else(|e| {
+                tracing::error!("reading settings: {e}");
+                Default::default()
+            });
         let lookup = {
             let db = db.clone();
             Arc::new(move |id: &str| -> Option<ScriptSource> {
@@ -150,7 +156,7 @@ impl App {
         Arc::new(Self {
             db,
             runs: Mutex::default(),
-            engine: Engine::new(lookup),
+            engine: Engine::new(lookup, transitions),
             events: broadcast::channel(256).0,
             ai,
         })
@@ -162,6 +168,46 @@ impl App {
 
     pub fn changed(&self) {
         let _ = self.events.send(Event::Config);
+    }
+
+    pub fn settings(&self) -> Result<Settings, String> {
+        db::settings(&*self.db()?)
+    }
+
+    /// Saves the settings; lights following the transitions for all lights
+    /// use the new ones from their next change.
+    pub fn save_settings(&self, settings: &Settings) -> Result<(), String> {
+        let db = self.db()?;
+        db::save_settings(&db, settings)?;
+        self.engine.set_transitions(settings.transitions.clone());
+        drop(db);
+        self.changed();
+        Ok(())
+    }
+
+    /// Makes every light follow the transitions for all lights in `slot`.
+    /// Returns the lights that had their own.
+    pub fn follow_all(&self, slot: Slot) -> Result<Vec<String>, String> {
+        let (changed, devices) = {
+            let db = self.db()?;
+            let mut changed = vec![];
+            let mut devices = vec![];
+            for (mut f, state) in db::fixtures(&db)? {
+                if f.transitions.slot_mut(slot).take().is_some() {
+                    db::save_fixture(&db, &f, &state)?;
+                    changed.push(f.id);
+                    if !devices.contains(&f.device_id) {
+                        devices.push(f.device_id);
+                    }
+                }
+            }
+            (changed, devices)
+        };
+        for d in devices {
+            self.sync_device(&d, false)?;
+        }
+        self.changed();
+        Ok(changed)
     }
 
     /// Imports seed devices into an empty database.
@@ -890,6 +936,33 @@ mod tests {
         app.run_schedules(NaiveDate::from_ymd_opt(y, m, d).unwrap())
             .unwrap();
         state(app)
+    }
+
+    #[test]
+    fn lights_follow_the_transitions_for_all_lights() {
+        let (_dir, app) = app();
+        let two = crate::model::TransitionChoice(vec![
+            TransitionSpec::new("iris", 400, Value::Null),
+            TransitionSpec::new("push", 400, Value::Null),
+        ]);
+        let mut settings = app.settings().unwrap();
+        assert_eq!(settings.transitions, Default::default());
+        settings.transitions.change = two.clone();
+        app.save_settings(&settings).unwrap();
+        // The engine resolves each light's lists from these when it uses them.
+        assert_eq!(app.engine.transitions().change, two);
+        let (mut f, state) = app.fixture("Curtain").unwrap();
+        let all = app.engine.transitions();
+        assert_eq!(f.transitions.effective(Slot::Change, &all), &two);
+        // A light with its own list keeps it, until told to follow again.
+        f.transitions.change = Some(crate::model::TransitionChoice::default());
+        db::save_fixture(&app.db().unwrap(), &f, &state).unwrap();
+        let f = app.fixture("Curtain").unwrap().0;
+        assert!(f.transitions.effective(Slot::Change, &all).is_empty());
+        assert_eq!(app.follow_all(Slot::Change).unwrap(), vec!["Curtain"]);
+        assert_eq!(app.follow_all(Slot::Change).unwrap(), Vec::<String>::new());
+        let f = app.fixture("Curtain").unwrap().0;
+        assert_eq!(f.transitions.effective(Slot::Change, &all), &two);
     }
 
     #[test]

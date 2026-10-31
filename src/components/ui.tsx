@@ -71,9 +71,9 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3">
+    <section className="scroll-mt-20 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-[13px] font-semibold tracking-wide text-muted uppercase">
+        <h2 className="scroll-mt-24 text-[13px] font-semibold tracking-wide text-muted uppercase">
           {title}
         </h2>
         {action}

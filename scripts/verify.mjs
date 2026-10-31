@@ -93,11 +93,19 @@ try {
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await page.getByRole("switch", { name: "Test curtain power" }).waitFor();
 
-  // The gear opens the string's settings.
-  await page.getByRole("button", { name: "Test curtain settings" }).click();
+  // The gear opens the light's settings page, with its string's.
+  await page.getByRole("link", { name: "Test curtain settings" }).click();
   await page.getByText("210 RGBW LEDs").waitFor();
-  await page.screenshot({ path: `${shots}/settings.png` });
-  await page.keyboard.press("Escape");
+  assert.equal(new URL(page.url()).pathname, "/lights/Test%20curtain/settings");
+  await page.getByRole("slider", { name: "Effect size" }).waitFor();
+  assert.ok(
+    (
+      await page.getByRole("combobox", { name: "Positions" }).textContent()
+    ).includes("Along its length"),
+    "positions offer along its length",
+  );
+  await page.screenshot({ path: `${shots}/settings.png`, fullPage: true });
+  await page.goto(origin);
 
   // Turn it on from the overview.
   await page.getByRole("switch", { name: "Test curtain power" }).click();
@@ -110,7 +118,7 @@ try {
   await page.screenshot({ path: `${shots}/lights.png`, fullPage: true });
 
   // Pick an effect and change a setting on the light's page.
-  await page.getByRole("link", { name: "Test curtain" }).first().click();
+  await page.getByRole("heading", { name: "Test curtain" }).click();
   await page.getByRole("button", { name: /^Rainbow/ }).click();
   await page.getByText("Rainbow settings").waitFor();
   await delay(1500);
@@ -129,8 +137,13 @@ try {
   const getFixture = async () =>
     (await (await page.request.get(`${origin}/api/state`)).json()).fixtures[0]
       .fixture;
+  const getState = async () =>
+    (await page.request.get(`${origin}/api/state`)).json();
   const fixture = await getFixture();
-  assert.ok(Array.isArray(fixture.transitions.on), "slots are lists");
+  // New lights follow the transitions for all lights.
+  assert.deepEqual(fixture.transitions, { on: null, off: null, change: null });
+  const settings = (await getState()).settings;
+  assert.ok(Array.isArray(settings.transitions.on), "slots are lists");
   const single = await page.request.put(curtainUrl, {
     headers: { Origin: origin },
     data: {
@@ -145,20 +158,37 @@ try {
   assert.deepEqual((await getFixture()).transitions.on, [
     { scriptId: "fade", durationMs: 500, params: null },
   ]);
-  const shuffled = await page.request.put(curtainUrl, {
-    headers: { Origin: origin },
-    data: {
-      ...fixture,
-      transitions: {
-        ...fixture.transitions,
-        change: [
-          { scriptId: "iris", durationMs: 400, params: { rim: 0.8 } },
-          { scriptId: "push", durationMs: 400, params: { direction: "up" } },
-        ],
-      },
-    },
+  // Two shuffled transitions for every light changing effect.
+  const twoChanges = [
+    { scriptId: "iris", durationMs: 400, params: { rim: 0.8 } },
+    { scriptId: "push", durationMs: 400, params: { direction: "up" } },
+  ];
+  const putSettings = (transitions) =>
+    page.request.put(`${origin}/api/settings`, {
+      headers: { Origin: origin },
+      data: { ...settings, transitions },
+    });
+  const shuffled = await putSettings({
+    ...settings.transitions,
+    change: twoChanges,
   });
   assert.ok(shuffled.ok(), `two transitions: ${await shuffled.text()}`);
+  const unknown = await putSettings({
+    ...settings.transitions,
+    change: [{ scriptId: "no-such", durationMs: 400 }],
+  });
+  assert.equal(unknown.status(), 400, "unknown transitions are refused");
+  {
+    const s = await getState();
+    assert.deepEqual(s.settings.transitions.change, twoChanges);
+    // The light follows them: it has no list of its own.
+    assert.equal(s.fixtures[0].fixture.transitions.change, null);
+    assert.deepEqual(
+      (await (await page.request.get(`${origin}/api/settings`)).json())
+        .transitions.change,
+      twoChanges,
+    );
+  }
   const framesBeforeSwitching = fake.state.frames;
   for (const scriptId of ["plasma", "aurora", "fire", "plasma", "rainbow"]) {
     const r = await page.request.post(`${curtainUrl}/state`, {
@@ -214,8 +244,47 @@ try {
     assert.ok(restored.ok(), "back to the mapped layout");
   }
 
-  await page.reload();
-  await page.getByText(/Shuffles between these/).waitFor();
+  // A light with its own list keeps it when the shared one changes.
+  const ownChange = [{ scriptId: "fade", durationMs: 300, params: null }];
+  const own = await page.request.put(curtainUrl, {
+    headers: { Origin: origin },
+    data: {
+      ...(await getFixture()),
+      transitions: { on: null, off: null, change: ownChange },
+    },
+  });
+  assert.ok(own.ok(), `own transitions: ${await own.text()}`);
+  assert.ok(
+    (await putSettings({ ...settings.transitions, change: twoChanges })).ok(),
+  );
+  assert.deepEqual((await getFixture()).transitions.change, ownChange);
+
+  // Settings: "Use these on every light" makes it follow again.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByText("Test curtain uses its own.").waitFor();
+  await page
+    .getByRole("button", {
+      name: "Use these for changing effect on every light",
+    })
+    .click();
+  await until(
+    "the light to follow the shared list",
+    async () => (await getFixture()).transitions.change === null,
+  );
+  await page.getByText("Every light uses these.").nth(2).waitFor();
+  await delay(1200);
+  await page.screenshot({ path: `${shots}/app-settings.png`, fullPage: true });
+
+  // The light's own list starts as a copy of the shared one.
+  await page.goto(`${origin}/lights/Test%20curtain/settings`);
+  await page
+    .getByRole("switch", { name: "Turning on: same as all lights" })
+    .click();
+  await until(
+    "an own list",
+    async () => (await getFixture()).transitions.on?.length === 1,
+  );
   // Add one to the "Turning on" list with the picker.
   await page.getByRole("button", { name: "Add transition" }).first().click();
   await page
@@ -226,12 +295,13 @@ try {
     "the added transition",
     async () => (await getFixture()).transitions.on.length === 2,
   );
+  await page.getByText(/Shuffles between these/).waitFor();
   await page
     .getByRole("heading", { name: "Transitions" })
     .evaluate((h) => h.scrollIntoView({ block: "center" }));
   await delay(1200);
   await page.screenshot({ path: `${shots}/transitions.png` });
-  await page.getByRole("button", { name: "Add transition" }).nth(2).click();
+  await page.getByRole("button", { name: "Add transition" }).first().click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: /^Melt/ })
@@ -239,6 +309,36 @@ try {
   await delay(1200);
   await page.screenshot({ path: `${shots}/transition-picker.png` });
   await page.keyboard.press("Escape");
+
+  // Positions and effect size save from the light's settings page.
+  {
+    const before = await getFixture();
+    await page
+      .getByRole("combobox", { name: "Positions" })
+      .selectOption("along");
+    const size = page.getByRole("slider", { name: "Effect size" });
+    await size.focus();
+    for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
+    await page.getByText("2×", { exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Save", exact: true })
+      .first()
+      .click();
+    await until("the layout and size to save", async () => {
+      const f = await getFixture();
+      return f.layout.kind === "along" && f.scale === 2;
+    });
+    assert.deepEqual(
+      (await getFixture()).transitions.on.length,
+      2,
+      "saving the layout keeps the light's transitions",
+    );
+    const back = await page.request.put(curtainUrl, {
+      headers: { Origin: origin },
+      data: { ...(await getFixture()), layout: before.layout, scale: 1 },
+    });
+    assert.ok(back.ok(), "back to the mapped layout");
+  }
 
   // Editor: the preview renders server-side.
   await page.goto(`${origin}/effects/plasma`);
@@ -347,19 +447,41 @@ try {
   await page.getByRole("button", { name: /^Christmas/ }).waitFor();
   await delay(1500);
   await page.screenshot({ path: `${shots}/playlists.png`, fullPage: true });
+  // A playlist opens on its own page; it previews live on the light
+  // playing it.
   await page.getByRole("button", { name: /^Test loop/ }).click();
-  await page.getByRole("dialog").getByText("Rainbow").waitFor();
-  await page.getByRole("dialog").getByText("Water drop").waitFor();
+  await page.getByText("Live: Test curtain is playing it.").waitFor();
+  assert.equal(new URL(page.url()).pathname, `/playlists/${playlist.id}`);
+  await page.locator("main").getByText("Rainbow").first().waitFor();
+  await page.locator("main").getByText("Water drop").waitFor();
+  await page.getByRole("button", { name: "Playing on Test curtain" }).waitFor();
+  await delay(2000);
+  await page.screenshot({ path: `${shots}/playlist.png`, fullPage: true });
   await page
-    .getByRole("dialog")
     .getByText("Transitions between effects")
     .evaluate((h) => h.scrollIntoView({ block: "center" }));
-  await delay(2500);
+  await delay(1000);
   await page.screenshot({ path: `${shots}/playlist-transitions.png` });
   await page.getByRole("button", { name: "Add effect" }).click();
   await delay(1500);
   await page.screenshot({ path: `${shots}/playlist-editor.png` });
-  await page.keyboard.press("Escape");
+
+  // "New" opens an empty playlist page; saving gives it its own.
+  await page.goto(`${origin}/playlists`);
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByRole("heading", { name: "New playlist" }).waitFor();
+  await page.getByLabel("Name").fill("Evening");
+  await page.getByRole("button", { name: "Add effect" }).click();
+  await page.getByRole("button", { name: /^Basics \d/ }).click();
+  await page.getByRole("button", { name: /^Rainbow/ }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("heading", { name: "Evening" }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/playlists/evening");
+  assert.equal(
+    (await getState()).playlists.find((p) => p.id === "evening").entries[0]
+      .scriptId,
+    "rainbow",
+  );
 
   // "Stop playlist" keeps the effect on now, without the playlist.
   await page.goto(`${origin}/lights/Test%20curtain`);
@@ -379,6 +501,15 @@ try {
   });
   assert.equal((await effect.json()).playlistId, null);
 
+  // "Play on" from the playlist's page puts it on the chosen light.
+  await page.goto(`${origin}/playlists/evening`);
+  await page.getByRole("button", { name: "Play on Test curtain" }).click();
+  await until(
+    "the playlist from its page",
+    async () => (await light()).state.playlistId === "evening",
+  );
+  await page.getByRole("button", { name: "Playing on Test curtain" }).waitFor();
+
   // Turning off fades out live and switches the string off.
   await page.goto(origin);
   await page.getByRole("switch", { name: "Test curtain power" }).click();
@@ -394,11 +525,25 @@ try {
     .getByRole("heading", { name: "Effect", exact: true })
     .evaluate((h) => h.scrollIntoView({ block: "center" }));
   await page.screenshot({ path: `${shots}/light-phone-effects.png` });
+  await page.goto(`${origin}/lights/Test%20curtain/settings`);
+  await page.getByText("210 RGBW LEDs").waitFor();
+  await delay(1000);
+  await page.screenshot({
+    path: `${shots}/light-settings-phone.png`,
+    fullPage: true,
+  });
   await page
     .getByRole("heading", { name: "Transitions" })
-    .evaluate((h) => h.scrollIntoView({ block: "center" }));
+    .evaluate((h) => h.scrollIntoView({ block: "start" }));
   await delay(1000);
   await page.screenshot({ path: `${shots}/transitions-phone.png` });
+  await page.goto(`${origin}/settings`);
+  await page.getByText("Transitions for all lights").waitFor();
+  await delay(1000);
+  await page.screenshot({
+    path: `${shots}/app-settings-phone.png`,
+    fullPage: true,
+  });
   await page.goto(`${origin}/effects/snowfall`);
   await page.getByText("Try settings").waitFor();
   await page.getByRole("button", { name: "View the code" }).waitFor();
@@ -408,12 +553,13 @@ try {
   await delay(1500);
   await page.screenshot({ path: `${shots}/playlists-phone.png` });
   await page.getByRole("button", { name: /^Christmas/ }).click();
-  await page.getByRole("dialog").getByText("Start by itself").waitFor();
-  await delay(800);
+  await page.getByText("Start by itself").waitFor();
+  await delay(1500);
   await page.screenshot({ path: `${shots}/playlist-editor-phone.png` });
-  await page.getByRole("dialog").evaluate((d) => d.scrollTo(0, d.scrollHeight));
-  await page.screenshot({ path: `${shots}/playlist-editor-phone-2.png` });
-  await page.keyboard.press("Escape");
+  await page.screenshot({
+    path: `${shots}/playlist-editor-phone-full.png`,
+    fullPage: true,
+  });
   // Installed from the browser, the app opens in its own window.
   const manifest = await page.request.get(`${origin}/manifest.webmanifest`);
   assert.equal((await manifest.json()).display, "standalone");
@@ -460,8 +606,8 @@ try {
     await page.getByLabel("IP address").fill("127.0.0.1:8098");
     await page.getByRole("button", { name: "Add", exact: true }).click();
     await page.getByRole("switch", { name: "Staircase power" }).waitFor();
-    await page.getByRole("button", { name: "Staircase settings" }).click();
-    const settings = page.getByRole("dialog", { name: "Staircase settings" });
+    await page.getByRole("link", { name: "Staircase settings" }).click();
+    const settings = page.locator("main");
     await settings.getByText("210 RGB LEDs").waitFor();
     await settings.getByRole("button", { name: "Split off a part" }).click();
     const split = page.getByRole("dialog", { name: "Split off a part" });
@@ -581,7 +727,7 @@ try {
 
   assert.deepEqual(errors, [], "no browser errors");
   console.log(
-    "UI checks passed: add string, stream, effects, presets, shuffled transitions, editor preview, new script, movie upload, playlists, power off, splitting a string.",
+    "UI checks passed: add string, light settings page, stream, effects, presets, shared and own shuffled transitions, settings, editor preview, new script, movie upload, playlist pages, power off, splitting a string.",
   );
 } catch (e) {
   failed = true;
