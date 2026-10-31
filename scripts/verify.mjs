@@ -185,9 +185,25 @@ try {
   await page.getByText("Try settings").waitFor();
   await page.getByRole("button", { name: "View the code" }).waitFor();
   await page.screenshot({ path: `${shots}/editor-phone.png`, fullPage: true });
+  // Only cards on screen get thumbnails streamed.
+  const thumbs = new Set();
+  page.on("websocket", (ws) => {
+    if (!ws.url().endsWith("/api/gallery")) return;
+    ws.on("framereceived", ({ payload }) => {
+      if (typeof payload === "string") return;
+      thumbs.add(payload.subarray(1, 1 + payload[0]).toString());
+    });
+  });
   await page.goto(`${origin}/effects`);
   await delay(1500);
-  await page.screenshot({ path: `${shots}/effects-phone.png`, fullPage: true });
+  thumbs.clear();
+  await delay(1000);
+  const effectCount = state.scripts.filter((s) => s.kind === "effect").length;
+  assert.ok(
+    thumbs.size > 0 && thumbs.size < effectCount / 2,
+    `streamed ${thumbs.size} of ${effectCount} thumbnails`,
+  );
+  await page.screenshot({ path: `${shots}/effects-phone.png` });
 
   assert.deepEqual(errors, [], "no browser errors");
   console.log(

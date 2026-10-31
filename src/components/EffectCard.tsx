@@ -1,5 +1,6 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import type { FixtureLayout, ScriptInfo } from "../api";
+import type { Gallery } from "../live";
 import { Mirror } from "./Mirror";
 import { cx } from "./ui";
 
@@ -13,13 +14,18 @@ export function EffectCard({
   onClick,
 }: {
   script: ScriptInfo;
-  frames: Map<string, Uint8Array>;
+  frames: Gallery;
   layout: FixtureLayout;
   active?: boolean;
   badge?: ReactNode;
   onClick: () => void;
 }) {
   const source = useCallback(() => frames.get(script.id), [frames, script.id]);
+  const onVisible = useCallback(
+    (on: boolean) => frames.watch(script.id, on),
+    [frames, script.id],
+  );
+  useEffect(() => () => frames.watch(script.id, false), [frames, script.id]);
   return (
     <button
       onClick={onClick}
@@ -37,6 +43,7 @@ export function EffectCard({
           source={source}
           className="h-28"
           dot={0.9}
+          onVisible={onVisible}
         />
       </div>
       <div className="p-3.5">

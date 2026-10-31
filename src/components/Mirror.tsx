@@ -8,6 +8,8 @@ interface Props {
   className?: string;
   /** Multiplier for LED dot size. */
   dot?: number;
+  /** Called when the preview scrolls into or out of view; drawing pauses off screen. */
+  onVisible?: (visible: boolean) => void;
 }
 
 /** Draws LEDs at their positions with a soft glow. */
@@ -17,6 +19,7 @@ export function Mirror({
   source,
   className = "",
   dot = 1,
+  onVisible,
 }: Props) {
   const crisp = useRef<HTMLCanvasElement>(null);
   const glow = useRef<HTMLCanvasElement>(null);
@@ -45,9 +48,20 @@ export function Mirror({
     const observer = new ResizeObserver(resize);
     if (box.current) observer.observe(box.current);
     resize();
+    let shown = true;
+    const seen = new IntersectionObserver(
+      ([e]) => {
+        shown = e.isIntersecting;
+        if (shown) last = undefined;
+        onVisible?.(shown);
+      },
+      { rootMargin: "200px 0px" },
+    );
+    if (box.current) seen.observe(box.current);
 
     const draw = () => {
       raf = requestAnimationFrame(draw);
+      if (!shown) return;
       const data = source();
       if (data === last) return;
       last = data;
@@ -84,25 +98,35 @@ export function Mirror({
           const cr = data ? data[i * 3] : 0;
           const cg = data ? data[i * 3 + 1] : 0;
           const cb = data ? data[i * 3 + 2] : 0;
-          const lit = cr + cg + cb > 6;
-          if (!lit) {
-            if (isGlow) continue;
+          const peak = Math.max(cr, cg, cb);
+          const R = isGlow ? r * 1.9 : r;
+          // An unlit LED is a faint dot; lit ones paint their hue over it with
+          // opacity following brightness, so dim colours fade into "off".
+          if (!isGlow) {
+            ctx.globalAlpha = 1;
             ctx.fillStyle = "rgba(255,255,255,0.07)";
-          } else {
-            ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+            ctx.beginPath();
+            ctx.arc(px, py, R, 0, Math.PI * 2);
+            ctx.fill();
           }
+          if (peak < 1) continue;
+          const k = 255 / peak;
+          ctx.globalAlpha = peak / 255;
+          ctx.fillStyle = `rgb(${Math.round(cr * k)},${Math.round(cg * k)},${Math.round(cb * k)})`;
           ctx.beginPath();
-          ctx.arc(px, py, isGlow ? r * 1.9 : r, 0, Math.PI * 2);
+          ctx.arc(px, py, R, 0, Math.PI * 2);
           ctx.fill();
         }
+        ctx.globalAlpha = 1;
       }
     };
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
+      seen.disconnect();
     };
-  }, [points, aspect, source, dot]);
+  }, [points, aspect, source, dot, onVisible]);
 
   return (
     <div ref={box} className={`relative overflow-hidden ${className}`}>

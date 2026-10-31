@@ -21,6 +21,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    collections::HashSet,
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -352,15 +353,32 @@ type GalleryJob = (
     (Vec<[f32; 3]>, f32),
 );
 
+enum GalleryMsg {
+    Job(GalleryJob),
+    /// Script ids whose cards are on screen; only these are rendered.
+    Visible(HashSet<String>),
+}
+
+#[derive(Deserialize)]
+struct GalleryVisible {
+    visible: Vec<String>,
+}
+
 async fn gallery_socket(s: Server, socket: WebSocket) {
     let (mut tx, mut rx) = socket.split();
-    let (job_tx, job_rx) = mpsc::channel::<GalleryJob>();
+    let (job_tx, job_rx) = mpsc::channel::<GalleryMsg>();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
     std::thread::spawn(move || gallery_thread(job_rx, out_tx));
     loop {
         tokio::select! {
             incoming = rx.next() => match incoming {
                 Some(Ok(Message::Text(text))) => {
+                    if let Ok(v) = serde_json::from_str::<GalleryVisible>(&text) {
+                        if job_tx.send(GalleryMsg::Visible(v.visible.into_iter().collect())).is_err() {
+                            break;
+                        }
+                        continue;
+                    }
                     let Ok(req) = serde_json::from_str::<GalleryRequest>(&text) else { continue };
                     let job = (|| -> Option<GalleryJob> {
                         let db = s.app.db().ok()?;
@@ -383,7 +401,7 @@ async fn gallery_socket(s: Server, socket: WebSocket) {
                         Some((req.kind, sources, layout))
                     })();
                     if let Some(job) = job
-                        && job_tx.send(job).is_err() {
+                        && job_tx.send(GalleryMsg::Job(job)).is_err() {
                             break;
                         }
                 }
@@ -398,14 +416,17 @@ async fn gallery_socket(s: Server, socket: WebSocket) {
     }
 }
 
-fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<Vec<u8>>) {
+fn gallery_thread(rx: mpsc::Receiver<GalleryMsg>, tx: tokio::sync::mpsc::Sender<Vec<u8>>) {
     let mut job: Option<GalleryRun> = None;
     let mut scripts = None;
+    // Older clients never say what's visible, so everything renders.
+    let mut visible: Option<HashSet<String>> = None;
     loop {
         let mut latest = None;
         loop {
             match rx.try_recv() {
-                Ok(j) => latest = Some(j),
+                Ok(GalleryMsg::Job(j)) => latest = Some(j),
+                Ok(GalleryMsg::Visible(v)) => visible = Some(v),
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => return,
             }
@@ -450,11 +471,15 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryJob>, tx: tokio::sync::mpsc::Sender<
             let mut out = vec![0.0; n * 3];
             let mut a = vec![0.0; n * 3];
             let mut b = vec![0.0; n * 3];
-            if *kind == ScriptKind::Transition {
+            let shown = |id: &String| visible.as_ref().is_none_or(|v| v.contains(id));
+            if *kind == ScriptKind::Transition && items.iter().any(|(id, _)| shown(id)) {
                 let _ = rt.render("from", t, 0.1, &mut a);
                 let _ = rt.render("to", t, 0.1, &mut b);
             }
             for (id, key) in items {
+                if !shown(id) {
+                    continue;
+                }
                 let ok = if *kind == ScriptKind::Transition {
                     let phase = t % 3.0;
                     rt.blend(

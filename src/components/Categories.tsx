@@ -51,7 +51,7 @@ export function CategoryChips({
     ...groups.map(([c, s]) => [c, s.length] as const),
   ];
   return (
-    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+    <div className="-mx-4 -my-1 flex gap-2 overflow-x-auto px-4 py-1 [scrollbar-width:none]">
       {options.map(([c, n]) => (
         <button
           key={c}

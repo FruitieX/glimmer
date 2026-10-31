@@ -168,28 +168,68 @@ export function usePreview(request: unknown | null) {
   return { error, meta, points, frame };
 }
 
-/** Live thumbnails of every effect or transition, keyed by script id. */
-export function useGallery(kind: "effect" | "transition", fixtureId?: string) {
-  const [frames] = useState(() => new Map<string, Uint8Array>());
+/** Live thumbnails keyed by script id, plus which cards are on screen. */
+export type Gallery = Map<string, Uint8Array> & {
+  /** Marks a card visible or hidden; the server renders only visible ones. */
+  watch(id: string, visible: boolean): void;
+};
+
+/** Live thumbnails of effects or transitions, rendered only while on screen. */
+export function useGallery(
+  kind: "effect" | "transition",
+  fixtureId?: string,
+): Gallery {
+  const [gallery] = useState(() => {
+    const g = new Map<string, Uint8Array>() as Gallery;
+    const visible = new Set<string>();
+    let socket: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const send = () => {
+      if (socket?.readyState === WebSocket.OPEN)
+        socket.send(JSON.stringify({ visible: [...visible] }));
+    };
+    g.watch = (id, on) => {
+      if (on === visible.has(id)) return;
+      if (on) visible.add(id);
+      else visible.delete(id);
+      clearTimeout(timer);
+      timer = setTimeout(send, 60);
+    };
+    return Object.assign(g, {
+      attach(ws: WebSocket | null) {
+        socket = ws;
+      },
+      sendVisible: send,
+    });
+  });
   useEffect(() => {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/gallery`;
     let closed = false;
     let socket: WebSocket;
     let timer: ReturnType<typeof setTimeout>;
+    const g = gallery as Gallery & {
+      attach(ws: WebSocket | null): void;
+      sendVisible(): void;
+    };
     const open = () => {
       socket = new WebSocket(url);
       socket.binaryType = "arraybuffer";
-      socket.onopen = () => socket.send(JSON.stringify({ kind, fixtureId }));
+      socket.onopen = () => {
+        g.attach(socket);
+        g.sendVisible();
+        socket.send(JSON.stringify({ kind, fixtureId }));
+      };
       socket.onmessage = (e) => {
         if (!(e.data instanceof ArrayBuffer)) return;
         const bytes = new Uint8Array(e.data);
         const len = bytes[0];
-        frames.set(
+        g.set(
           new TextDecoder().decode(bytes.subarray(1, 1 + len)),
           bytes.subarray(1 + len),
         );
       };
       socket.onclose = () => {
+        g.attach(null);
         if (!closed) timer = setTimeout(open, 3000);
       };
     };
@@ -197,10 +237,11 @@ export function useGallery(kind: "effect" | "transition", fixtureId?: string) {
     return () => {
       closed = true;
       clearTimeout(timer);
+      g.attach(null);
       socket?.close();
     };
-  }, [kind, fixtureId, frames]);
-  return frames;
+  }, [kind, fixtureId, gallery]);
+  return gallery;
 }
 
 /** The 10 × 21 grid the server previews on when no light is chosen. */

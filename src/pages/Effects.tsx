@@ -9,7 +9,7 @@ import {
 } from "../api";
 import { CategoryChips, groupByCategory } from "../components/Categories";
 import { useApp, useRoute } from "../main";
-import { GRID, useGallery } from "../live";
+import { GRID, useGallery, type Gallery } from "../live";
 import { EffectCard } from "../components/EffectCard";
 import {
   Badge,
@@ -28,7 +28,7 @@ function Grid({
   layout,
 }: {
   scripts: ScriptInfo[];
-  frames: Map<string, Uint8Array>;
+  frames: Gallery;
   layout: FixtureLayout;
 }) {
   const { navigate } = useRoute();
