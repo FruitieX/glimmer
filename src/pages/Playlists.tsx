@@ -384,7 +384,7 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:grid-rows-[auto_1fr] lg:items-start">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr] lg:items-start">
         <Card className="overflow-hidden lg:col-start-2 lg:row-start-1">
           {playing && light?.layout?.points.length ? (
             <div className="bg-gradient-to-b from-night to-ink">
@@ -482,7 +482,7 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
                   <li
                     key={i}
                     className={cx(
-                      "space-y-2 rounded-xl bg-night/60 p-2.5 ring-1 ring-line",
+                      "flex gap-3 rounded-xl bg-night/60 p-2.5 ring-1 ring-line",
                       !e.enabled && "opacity-60",
                     )}
                   >
@@ -490,94 +490,98 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
                       scriptId={e.scriptId}
                       frames={frames}
                       layout={layout}
-                      className="h-28 overflow-hidden rounded-lg"
+                      className="w-24 shrink-0 self-stretch overflow-hidden rounded-lg sm:w-32"
                     />
-                    <div className="flex items-center gap-3 px-1">
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {label}
-                      </span>
-                      <Toggle
-                        label={`Play ${label}`}
-                        checked={e.enabled}
-                        onChange={(v) => update(i, { enabled: v })}
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <select
-                        aria-label={`${label} preset`}
-                        className={cx(smallInput, "min-w-0 flex-1")}
-                        value={e.presetId ?? ""}
-                        onChange={(ev) => {
-                          const preset = state.presets.find(
-                            (p) => p.id === ev.target.value,
-                          );
-                          update(
-                            i,
-                            preset
-                              ? {
-                                  presetId: preset.id,
-                                  scriptId: preset.look.scriptId,
-                                  params: preset.look.params,
-                                  colors: preset.look.colors,
-                                }
-                              : { presetId: null },
-                          );
-                        }}
-                      >
-                        <option value="">Default settings</option>
-                        {state.presets.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            Preset: {p.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={1}
-                        aria-label={`${label} seconds`}
-                        className={cx(smallInput, "w-16 text-right")}
-                        value={e.durationS}
-                        onChange={(ev) =>
-                          update(i, {
-                            durationS: Math.max(
-                              1,
-                              Number(ev.target.value) || 1,
-                            ),
-                          })
-                        }
-                      />
-                      <span className="text-xs text-muted">s</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="px-2"
-                        aria-label={`Move ${label} up`}
-                        disabled={i === 0}
-                        onClick={() => move(i, -1)}
-                      >
-                        <ArrowUp size={14} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="px-2"
-                        aria-label={`Move ${label} down`}
-                        disabled={i === entries.length - 1}
-                        onClick={() => move(i, 1)}
-                      >
-                        <ArrowDown size={14} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="px-2"
-                        aria-label={`Remove ${label}`}
-                        onClick={() =>
-                          setEntries(entries.filter((_, j) => j !== i))
-                        }
-                      >
-                        <X size={14} />
-                      </Button>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {label}
+                        </span>
+                        <Toggle
+                          label={`Play ${label}`}
+                          checked={e.enabled}
+                          onChange={(v) => update(i, { enabled: v })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          aria-label={`${label} preset`}
+                          className={cx(smallInput, "w-0 min-w-0 flex-1")}
+                          value={e.presetId ?? ""}
+                          onChange={(ev) => {
+                            const preset = state.presets.find(
+                              (p) => p.id === ev.target.value,
+                            );
+                            update(
+                              i,
+                              preset
+                                ? {
+                                    presetId: preset.id,
+                                    scriptId: preset.look.scriptId,
+                                    params: preset.look.params,
+                                    colors: preset.look.colors,
+                                  }
+                                : { presetId: null },
+                            );
+                          }}
+                        >
+                          <option value="">Default settings</option>
+                          {state.presets.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              Preset: {p.name}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={1}
+                          aria-label={`${label} seconds`}
+                          className={cx(smallInput, "w-16 text-right")}
+                          value={e.durationS}
+                          onChange={(ev) =>
+                            update(i, {
+                              durationS: Math.max(
+                                1,
+                                Number(ev.target.value) || 1,
+                              ),
+                            })
+                          }
+                        />
+                        <span className="text-xs text-muted">s</span>
+                      </div>
+                      <div className="-my-1 flex items-center justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="px-2"
+                          aria-label={`Move ${label} up`}
+                          disabled={i === 0}
+                          onClick={() => move(i, -1)}
+                        >
+                          <ArrowUp size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="px-2"
+                          aria-label={`Move ${label} down`}
+                          disabled={i === entries.length - 1}
+                          onClick={() => move(i, 1)}
+                        >
+                          <ArrowDown size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="px-2"
+                          aria-label={`Remove ${label}`}
+                          onClick={() =>
+                            setEntries(entries.filter((_, j) => j !== i))
+                          }
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
                     </div>
                   </li>
                 );

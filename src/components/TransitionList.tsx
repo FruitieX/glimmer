@@ -38,12 +38,39 @@ export function TransitionList({
   const [chosen, setChosen] = useState<string[]>([]);
   const inList = new Set(items.map((x) => x.scriptId));
   const addable = transitions.filter((t) => !inList.has(t.id));
+  // One slider sets every transition's duration (starting from their average).
+  const sameMs = items.every((x) => x.durationMs === items[0]?.durationMs);
+  const allMs = items.length
+    ? Math.round(
+        items.reduce((a, x) => a + x.durationMs, 0) / items.length / 100,
+      ) * 100
+    : defaultMs;
   const update = (i: number, s: TransitionSpec) =>
     onChange(items.map((x, j) => (j === i ? s : x)));
 
   return (
     <div className="space-y-2">
       {items.length === 0 && <p className="text-sm text-muted">{empty}</p>}
+      {items.length > 1 && (
+        <div className="rounded-xl bg-night/40 px-3 py-2 ring-1 ring-line">
+          <div className="flex justify-between text-xs">
+            <span className="font-medium text-soft">All durations</span>
+            <span className="font-mono text-muted tabular-nums">
+              {(allMs / 1000).toFixed(1)} s{!sameMs && " (mixed)"}
+            </span>
+          </div>
+          <Slider
+            label={`${label} all durations`}
+            value={allMs}
+            min={0}
+            max={6000}
+            step={100}
+            onChange={(v) =>
+              onChange(items.map((x) => ({ ...x, durationMs: v })))
+            }
+          />
+        </div>
+      )}
       <ol className="space-y-2">
         {items.map((spec, i) => {
           const script = transitions.find((t) => t.id === spec.scriptId);
@@ -55,9 +82,9 @@ export function TransitionList({
               key={i}
               className="space-y-3 rounded-xl bg-night/60 p-2.5 ring-1 ring-line"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex gap-3">
                 <button
-                  className="shrink-0 overflow-hidden rounded-lg ring-1 ring-line hover:ring-glow/40"
+                  className="w-24 shrink-0 self-stretch overflow-hidden rounded-lg ring-1 ring-line hover:ring-glow/40 sm:w-28"
                   aria-label={`Change ${label} transition ${name}`}
                   onClick={() => setPicking(i)}
                 >
@@ -65,56 +92,63 @@ export function TransitionList({
                     scriptId={spec.scriptId}
                     frames={frames}
                     layout={layout}
-                    className="h-11 w-16"
+                    className="h-full min-h-20"
                   />
                 </button>
-                <button
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => setPicking(i)}
-                >
-                  <span className="block truncate text-sm font-medium">
-                    {name}
-                  </span>
-                  <span className="block font-mono text-xs text-muted tabular-nums">
-                    {(spec.durationMs / 1000).toFixed(1)} s
-                  </span>
-                </button>
-                {hasParams && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="px-2"
-                    aria-label={`${name} settings`}
-                    aria-expanded={open === i}
-                    onClick={() => setOpen(open === i ? null : i)}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={cx("transition", open === i && "rotate-180")}
-                    />
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="px-2"
-                  aria-label={`Remove ${name} from ${label}`}
-                  onClick={() => {
-                    setOpen(null);
-                    onChange(items.filter((_, j) => j !== i));
-                  }}
-                >
-                  <X size={14} />
-                </Button>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => setPicking(i)}
+                    >
+                      <span className="block truncate text-sm font-medium">
+                        {name}
+                      </span>
+                      <span className="block font-mono text-xs text-muted tabular-nums">
+                        {(spec.durationMs / 1000).toFixed(1)} s
+                      </span>
+                    </button>
+                    {hasParams && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="px-2"
+                        aria-label={`${name} settings`}
+                        aria-expanded={open === i}
+                        onClick={() => setOpen(open === i ? null : i)}
+                      >
+                        <ChevronDown
+                          size={14}
+                          className={cx(
+                            "transition",
+                            open === i && "rotate-180",
+                          )}
+                        />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="px-2"
+                      aria-label={`Remove ${name} from ${label}`}
+                      onClick={() => {
+                        setOpen(null);
+                        onChange(items.filter((_, j) => j !== i));
+                      }}
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                  <Slider
+                    label={`${label} ${name} duration`}
+                    value={spec.durationMs}
+                    min={0}
+                    max={6000}
+                    step={100}
+                    onChange={(v) => update(i, { ...spec, durationMs: v })}
+                  />
+                </div>
               </div>
-              <Slider
-                label={`${label} ${name} duration`}
-                value={spec.durationMs}
-                min={0}
-                max={6000}
-                step={100}
-                onChange={(v) => update(i, { ...spec, durationMs: v })}
-              />
               {hasParams && open === i && (
                 <ParamControls
                   params={script.meta.params}

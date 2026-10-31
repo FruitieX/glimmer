@@ -62,9 +62,12 @@ const browser = await chromium.launch({
 });
 let failed = false;
 try {
+  // Startup checks every built-in script, which takes a while on a busy
+  // machine with a debug build.
   await until(
     "the server",
     async () => (await fetch(`${origin}/api/ready`)).ok,
+    60000,
   );
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
