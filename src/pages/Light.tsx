@@ -21,6 +21,7 @@ import {
   type Fixture,
   type FixtureState,
   type LayoutMode,
+  type Playlist,
   type Preset,
   type TransitionSpec,
 } from "../api";
@@ -347,6 +348,11 @@ function Light({
         presets={state.presets}
         active={preset}
         look={item.state.look}
+        entry={
+          playlist && entry && entryIndex != null && tweaked
+            ? { playlist, index: entryIndex }
+            : undefined
+        }
       />
 
       <Section title="Effect">
@@ -449,16 +455,20 @@ function Presets({
   presets,
   active,
   look,
+  entry,
 }: {
   fixtureId: string;
   presets: Preset[];
   active?: Preset;
   look: FixtureState["look"];
+  /** The playing playlist entry, when this look changed it. */
+  entry?: { playlist: Playlist; index: number };
 }) {
   const { reload } = useApp();
   const { run, busy } = useAction();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
+  const [useInPlaylist, setUseInPlaylist] = useState(true);
   const [editing, setEditing] = useState<Preset | null>(null);
   return (
     <Section
@@ -522,10 +532,27 @@ function Presets({
           className="space-y-4"
           onSubmit={async (e) => {
             e.preventDefault();
-            const ok = await run(
-              () => post("/presets", { name, look }),
-              "Preset saved",
-            );
+            const ok = await run(async () => {
+              const preset = await post<Preset>("/presets", { name, look });
+              if (entry && useInPlaylist) {
+                const { playlist, index } = entry;
+                await put(`/playlists/${encodeURIComponent(playlist.id)}`, {
+                  ...playlist,
+                  entries: playlist.entries.map((e, i) =>
+                    i === index
+                      ? {
+                          ...e,
+                          presetId: preset.id,
+                          scriptId: look.scriptId,
+                          params: look.params,
+                          colors: look.colors,
+                        }
+                      : e,
+                  ),
+                });
+              }
+              return true;
+            }, "Preset saved");
             if (ok) {
               setSaving(false);
               setName("");
@@ -541,6 +568,16 @@ function Presets({
               autoFocus
             />
           </Field>
+          {entry && (
+            <label className="flex items-center gap-3 text-sm text-soft">
+              <Toggle
+                label={`Use it in ${entry.playlist.name}`}
+                checked={useInPlaylist}
+                onChange={setUseInPlaylist}
+              />
+              Use it for this effect in {entry.playlist.name}
+            </label>
+          )}
           <Button
             variant="primary"
             className="w-full"

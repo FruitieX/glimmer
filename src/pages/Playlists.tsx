@@ -304,13 +304,13 @@ function PlaylistEditor({
                   !e.enabled && "opacity-60",
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <Thumb
-                    scriptId={e.scriptId}
-                    frames={frames}
-                    layout={layout}
-                    className="h-11 w-16 shrink-0 overflow-hidden rounded-lg"
-                  />
+                <Thumb
+                  scriptId={e.scriptId}
+                  frames={frames}
+                  layout={layout}
+                  className="h-28 overflow-hidden rounded-lg"
+                />
+                <div className="flex items-center gap-3 px-1">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {label}
                   </span>
