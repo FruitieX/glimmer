@@ -124,6 +124,86 @@ try {
   await page.getByRole("button", { name: "Save preset" }).click();
   await page.getByRole("button", { name: "Party", exact: true }).waitFor();
 
+  // Transitions: a slot can hold several, shuffled; old clients send one.
+  const curtainUrl = `${origin}/api/fixtures/${encodeURIComponent("Test curtain")}`;
+  const getFixture = async () =>
+    (await (await page.request.get(`${origin}/api/state`)).json()).fixtures[0]
+      .fixture;
+  const fixture = await getFixture();
+  assert.ok(Array.isArray(fixture.transitions.on), "slots are lists");
+  const single = await page.request.put(curtainUrl, {
+    headers: { Origin: origin },
+    data: {
+      ...fixture,
+      transitions: {
+        ...fixture.transitions,
+        on: { scriptId: "fade", durationMs: 500 },
+      },
+    },
+  });
+  assert.ok(single.ok(), `single transition: ${await single.text()}`);
+  assert.deepEqual((await getFixture()).transitions.on, [
+    { scriptId: "fade", durationMs: 500, params: null },
+  ]);
+  const shuffled = await page.request.put(curtainUrl, {
+    headers: { Origin: origin },
+    data: {
+      ...fixture,
+      transitions: {
+        ...fixture.transitions,
+        change: [
+          { scriptId: "iris", durationMs: 400, params: { rim: 0.8 } },
+          { scriptId: "push", durationMs: 400, params: { direction: "up" } },
+        ],
+      },
+    },
+  });
+  assert.ok(shuffled.ok(), `two transitions: ${await shuffled.text()}`);
+  const framesBeforeSwitching = fake.state.frames;
+  for (const scriptId of ["plasma", "aurora", "fire", "plasma", "rainbow"]) {
+    const r = await page.request.post(`${curtainUrl}/state`, {
+      headers: { Origin: origin },
+      data: { scriptId },
+    });
+    assert.ok(r.ok(), `switch to ${scriptId}`);
+    await delay(450);
+  }
+  await until(
+    "frames while switching",
+    () => fake.state.frames > framesBeforeSwitching + 40,
+  );
+  const afterSwitching = (
+    await (await page.request.get(`${origin}/api/state`)).json()
+  ).status;
+  for (const s of Object.values(afterSwitching))
+    assert.deepEqual(s.fixtureErrors, {}, "no transition errors");
+
+  await page.reload();
+  await page.getByText(/Shuffles between these/).waitFor();
+  // Add one to the "Turning on" list with the picker.
+  await page.getByRole("button", { name: "Add transition" }).first().click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^Starburst/ })
+    .click();
+  await until(
+    "the added transition",
+    async () => (await getFixture()).transitions.on.length === 2,
+  );
+  await page
+    .getByRole("heading", { name: "Transitions" })
+    .evaluate((h) => h.scrollIntoView({ block: "center" }));
+  await delay(1200);
+  await page.screenshot({ path: `${shots}/transitions.png` });
+  await page.getByRole("button", { name: "Add transition" }).nth(2).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^Melt/ })
+    .waitFor();
+  await delay(1200);
+  await page.screenshot({ path: `${shots}/transition-picker.png` });
+  await page.keyboard.press("Escape");
+
   // Editor: the preview renders server-side.
   await page.goto(`${origin}/effects/plasma`);
   await page.getByText("Try settings").waitFor();
@@ -181,6 +261,8 @@ try {
         { scriptId: "rainbow", durationS: 2 },
         { scriptId: "plasma", durationS: 2 },
       ],
+      // Its own transition between entries, instead of the light's.
+      transitions: [{ scriptId: "water-drop", durationMs: 700, params: {} }],
     },
   });
   assert.ok(
@@ -188,6 +270,7 @@ try {
     `playlist: ${created.status()} ${await created.text()}`,
   );
   const playlist = await created.json();
+  assert.equal(playlist.transitions[0].scriptId, "water-drop");
   const fixtureUrl = `${origin}/api/fixtures/${encodeURIComponent("Test curtain")}`;
   const picked = await page.request.post(`${fixtureUrl}/state`, {
     headers: { Origin: origin },
@@ -230,6 +313,13 @@ try {
   await page.screenshot({ path: `${shots}/playlists.png`, fullPage: true });
   await page.getByRole("button", { name: /^Test loop/ }).click();
   await page.getByRole("dialog").getByText("Rainbow").waitFor();
+  await page.getByRole("dialog").getByText("Water drop").waitFor();
+  await page
+    .getByRole("dialog")
+    .getByText("Transitions between effects")
+    .evaluate((h) => h.scrollIntoView({ block: "center" }));
+  await delay(2500);
+  await page.screenshot({ path: `${shots}/playlist-transitions.png` });
   await page.getByRole("button", { name: "Add effect" }).click();
   await delay(1500);
   await page.screenshot({ path: `${shots}/playlist-editor.png` });
@@ -257,6 +347,11 @@ try {
     .getByRole("heading", { name: "Effect", exact: true })
     .evaluate((h) => h.scrollIntoView({ block: "center" }));
   await page.screenshot({ path: `${shots}/light-phone-effects.png` });
+  await page
+    .getByRole("heading", { name: "Transitions" })
+    .evaluate((h) => h.scrollIntoView({ block: "center" }));
+  await delay(1000);
+  await page.screenshot({ path: `${shots}/transitions-phone.png` });
   await page.goto(`${origin}/effects/snowfall`);
   await page.getByText("Try settings").waitFor();
   await page.getByRole("button", { name: "View the code" }).waitFor();
@@ -414,7 +509,7 @@ try {
 
   assert.deepEqual(errors, [], "no browser errors");
   console.log(
-    "UI checks passed: add string, stream, effects, presets, editor preview, new script, movie upload, playlists, power off, splitting a string.",
+    "UI checks passed: add string, stream, effects, presets, shuffled transitions, editor preview, new script, movie upload, playlists, power off, splitting a string.",
   );
 } catch (e) {
   failed = true;

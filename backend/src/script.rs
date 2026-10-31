@@ -416,6 +416,39 @@ mod tests {
     }
 
     #[test]
+    fn builtin_transitions_start_at_a_and_end_at_b() {
+        let curtain: Vec<[f32; 3]> = (0..210)
+            .map(|i| [(i / 21) as f32 / 9.0, (i % 21) as f32 / 20.0, 0.5])
+            .collect();
+        let strip: Vec<[f32; 3]> = (0..600).map(|i| [i as f32 / 599.0, 0.5, 0.5]).collect();
+        for (name, source, _) in crate::builtin::all().filter(|(_, _, t)| *t) {
+            let s = Scripts::new().unwrap();
+            s.register("t", source).unwrap();
+            for (id, points, aspect) in [("curtain", &curtain, 0.95), ("strip", &strip, 1.0)] {
+                s.layout(id, points, aspect).unwrap();
+                s.create(id, "t", id, &serde_json::json!({}), &[]).unwrap();
+                let len = points.len() * 3;
+                let a: Vec<f32> = (0..len).map(|i| (i * 37 % 101) as f32 / 100.0).collect();
+                let b: Vec<f32> = (0..len).map(|i| (i * 53 % 97) as f32 / 96.0).collect();
+                let mut out = vec![0.0; len];
+                for (progress, want) in [(0.0, &a), (1.0, &b)] {
+                    s.blend(id, Some(&a), Some(&b), progress, 0.7, 0.04, &mut out)
+                        .unwrap_or_else(|e| panic!("{name}: {e}"));
+                    let worst = out
+                        .iter()
+                        .zip(want.iter())
+                        .map(|(o, w)| (o - w).abs())
+                        .fold(0.0, f32::max);
+                    assert!(
+                        worst < 1e-3,
+                        "{name} on the {id} at {progress} is off by {worst}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn blends_frames() {
         let s = scripts();
         s.register("fade", crate::builtin::source("fade").unwrap())

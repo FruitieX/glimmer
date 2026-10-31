@@ -81,20 +81,94 @@ impl TransitionSpec {
     }
 }
 
+/// The transitions a slot can use; one is picked at random each time.
+/// Sent and stored as a list. A single spec (the older format, and what
+/// simple API clients send) reads as a list of one.
+#[derive(Clone, Debug, Serialize, PartialEq, Default)]
+#[serde(transparent)]
+pub struct TransitionChoice(pub Vec<TransitionSpec>);
+
+impl<'de> Deserialize<'de> for TransitionChoice {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            One(TransitionSpec),
+            Many(Vec<TransitionSpec>),
+        }
+        Ok(match Repr::deserialize(d)? {
+            Repr::One(spec) => Self(vec![spec]),
+            Repr::Many(list) => Self(list),
+        })
+    }
+}
+
+impl TransitionChoice {
+    pub fn one(spec: TransitionSpec) -> Self {
+        Self(vec![spec])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &TransitionSpec> {
+        self.0.iter()
+    }
+
+    /// Picks one at random, avoiding `last` (the previous pick) while there
+    /// is anything else to choose. `None` when the list is empty.
+    pub fn pick(
+        &self,
+        last: Option<&TransitionSpec>,
+        rng: &mut impl rand::Rng,
+    ) -> Option<&TransitionSpec> {
+        use rand::RngExt;
+        let fresh: Vec<&TransitionSpec> = self.0.iter().filter(|s| Some(*s) != last).collect();
+        let from: Vec<&TransitionSpec> = if fresh.is_empty() {
+            self.0.iter().collect()
+        } else {
+            fresh
+        };
+        match from.len() {
+            0 => None,
+            1 => Some(from[0]),
+            n => Some(from[rng.random_range(0..n)]),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Transitions {
-    pub on: TransitionSpec,
-    pub off: TransitionSpec,
-    pub change: TransitionSpec,
+    pub on: TransitionChoice,
+    pub off: TransitionChoice,
+    pub change: TransitionChoice,
+}
+
+impl Transitions {
+    pub fn all(&self) -> impl Iterator<Item = &TransitionSpec> {
+        self.on
+            .iter()
+            .chain(self.off.iter())
+            .chain(self.change.iter())
+    }
 }
 
 impl Default for Transitions {
     fn default() -> Self {
         Self {
-            on: TransitionSpec::new("wipe", 1500, serde_json::json!({"direction": "up"})),
-            off: TransitionSpec::new("wipe", 1500, serde_json::json!({"direction": "down"})),
-            change: TransitionSpec::new("fade", 1200, Value::Null),
+            on: TransitionChoice::one(TransitionSpec::new(
+                "wipe",
+                1500,
+                serde_json::json!({"direction": "up"}),
+            )),
+            off: TransitionChoice::one(TransitionSpec::new(
+                "wipe",
+                1500,
+                serde_json::json!({"direction": "down"}),
+            )),
+            change: TransitionChoice::one(TransitionSpec::new("fade", 1200, Value::Null)),
         }
     }
 }
@@ -236,6 +310,10 @@ pub struct Playlist {
     pub entries: Vec<PlaylistEntry>,
     #[serde(default)]
     pub shuffle: bool,
+    /// Used between entries instead of the light's own change transitions;
+    /// empty: the light's.
+    #[serde(default)]
+    pub transitions: TransitionChoice,
     #[serde(default)]
     pub season: Option<Season>,
     /// Put the playlist on by itself when its season starts.
@@ -290,4 +368,81 @@ pub fn slug(name: &str) -> String {
         }
     }
     out.trim_end_matches('-').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn spec(id: &str) -> TransitionSpec {
+        TransitionSpec::new(id, 1000, Value::Null)
+    }
+
+    #[test]
+    fn picks_never_repeat_straight_away() {
+        let mut rng = rand::rng();
+        let choice = TransitionChoice(vec![spec("fade"), spec("wipe"), spec("iris")]);
+        let mut last: Option<TransitionSpec> = None;
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..200 {
+            let pick = choice.pick(last.as_ref(), &mut rng).unwrap().clone();
+            assert_ne!(Some(&pick), last.as_ref());
+            seen.insert(pick.script_id.clone());
+            last = Some(pick);
+        }
+        assert_eq!(seen.len(), 3, "every transition gets picked");
+        // Two alternate.
+        let two = TransitionChoice(vec![spec("fade"), spec("wipe")]);
+        let first = two.pick(None, &mut rng).unwrap().clone();
+        let second = two.pick(Some(&first), &mut rng).unwrap();
+        assert_ne!(&first, second);
+    }
+
+    #[test]
+    fn single_and_empty_choices() {
+        let mut rng = rand::rng();
+        let one = TransitionChoice::one(spec("fade"));
+        // A single transition is used every time, even right after itself.
+        assert_eq!(one.pick(Some(&spec("fade")), &mut rng), Some(&spec("fade")));
+        assert_eq!(one.pick(None, &mut rng), Some(&spec("fade")));
+        assert_eq!(TransitionChoice::default().pick(None, &mut rng), None);
+        // Duplicates don't leave nothing to pick.
+        let same = TransitionChoice(vec![spec("fade"), spec("fade")]);
+        assert_eq!(
+            same.pick(Some(&spec("fade")), &mut rng),
+            Some(&spec("fade"))
+        );
+    }
+
+    #[test]
+    fn reads_single_transitions_from_older_data() {
+        let old = json!({
+            "on": {"scriptId": "wipe", "durationMs": 1500, "params": {"direction": "up"}},
+            "off": {"scriptId": "wipe", "durationMs": 1500},
+            "change": [
+                {"scriptId": "fade", "durationMs": 1200, "params": null},
+                {"scriptId": "iris", "durationMs": 900, "params": {"rim": 0.3}}
+            ]
+        });
+        let t: Transitions = serde_json::from_value(old).unwrap();
+        assert_eq!(t.on.0.len(), 1);
+        assert_eq!(t.on.0[0].params, json!({"direction": "up"}));
+        assert_eq!(t.off.0[0].params, Value::Null);
+        assert_eq!(t.change.0[1].script_id, "iris");
+        // Written back as lists.
+        let back = serde_json::to_value(&t).unwrap();
+        assert!(back["on"].is_array());
+        assert_eq!(serde_json::from_value::<Transitions>(back).unwrap(), t);
+        // Playlists from before playlist transitions have none.
+        let p: Playlist = serde_json::from_value(json!({
+            "id": "calm", "name": "Calm", "entries": []
+        }))
+        .unwrap();
+        assert!(p.transitions.is_empty());
+        assert!(
+            serde_json::from_value::<Transitions>(json!({"on": 3, "off": [], "change": []}))
+                .is_err()
+        );
+    }
 }

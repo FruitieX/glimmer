@@ -429,6 +429,7 @@ impl Builtin {
                 .map(|s| self.entry(s))
                 .collect(),
             shuffle: true,
+            transitions: Default::default(),
             auto_enabled: self.season.is_some(),
             season: self.season.clone(),
             lights: None,
@@ -590,6 +591,7 @@ mod tests {
             name: id.into(),
             entries: scripts.iter().map(|s| entry(s)).collect(),
             shuffle,
+            transitions: Default::default(),
             season: None,
             auto_enabled: false,
             lights: None,

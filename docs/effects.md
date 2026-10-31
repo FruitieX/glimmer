@@ -115,7 +115,7 @@ A transition blends from one picture to the next. It exports `meta` (with `param
 | `progress` | 0 at the start, 1 at the end (linear; apply easing yourself).      |
 | `t`        | Seconds since the transition started.                              |
 
-At `progress` 0 the output must equal `a`, and at 1 it must equal `b`.
+At `progress` 0 the output must equal `a`, and at 1 it must equal `b`, so glows, flashes and distortions must fade to nothing at both ends (multiply them by `Math.sin(PI * progress)`, for example).
 
 ```js
 export const meta = {
@@ -130,6 +130,34 @@ export function render(ctx) {
 }
 ```
 
+A transition may also export `setup(ctx)` (with `ctx.params` already filled in) to precompute per-LED values; its return value is passed to `render` as the second argument. A new instance runs for every transition, so `setup` sees the settings it is used with.
+
+Transitions run on curtains and on plain strings alike. On a string `y` doesn't vary (or `x` doesn't, when it hangs), so a wipe upwards or a circle from the middle would do nothing or everything at once: when `sampler(ctx).line` is true, work along `u` instead. Soften every moving edge over at least about one LED (`ctx.spacing * 1.5`, or `s.su` along `u`) with `smoothstep`, rather than using `meta.antialias`.
+
+To move, zoom or warp the pictures themselves (slide the old look out, ripple it), read `a` and `b` between LEDs with `sampler(ctx)` (see Helpers), created once in `setup`:
+
+```js
+export function setup(ctx) {
+  return { s: sampler(ctx), rgb: [0, 0, 0] };
+}
+export function render(ctx, st) {
+  const { n, x, y, u, a, b, out, progress } = ctx;
+  const soft = ctx.spacing * 1.5;
+  const p = ease.inOut(progress) * (1 + soft);
+  for (let i = 0; i < n; i++) {
+    // The old look slides out to the left; the new one stays put behind it.
+    const from = (st.s.line ? u[i] : x[i]) + p;
+    const k = smoothstep(1, 1 + soft, from);
+    if (st.s.line) st.s.along(a, from, st.rgb);
+    else st.s.at(a, from, y[i], st.rgb);
+    for (let c = 0; c < 3; c++)
+      out[i * 3 + c] = st.rgb[c] + (b[i * 3 + c] - st.rgb[c]) * k;
+  }
+}
+```
+
+Each light picks its transitions in the app; a slot (turning on, turning off, changing effect, or a playlist's changes) can hold several, and one of them is picked at random each time.
+
 ## Helpers (globals)
 
 - `PI`, `TAU`
@@ -141,5 +169,6 @@ export function render(ctx) {
 - `hash(i, seed = 0)`: deterministic pseudo-random number in 0..1 for an integer
 - `noise(x, y = 0, z = 0)`: smooth Perlin noise, roughly -1..1
 - `ease.linear`, `ease.in`, `ease.out`, `ease.inOut`
+- `sampler(ctx)`: reads a frame (an `n * 3` array, such as a transition's `a` or `b`) at any position by blending the nearby LEDs; at an LED's own position it gives exactly that LED. Create it in `setup`; it returns `{ line, sx, sy, su, at(frame, x, y, rgb), along(frame, u, rgb) }`. `at` and `along` write the colour into `rgb` (an `[r, g, b]` array you reuse) and return it; positions outside 0..1 are clamped. `line` is true when the fixture is a line, `sx`/`sy` are the typical gaps between neighbouring LEDs sideways and up/down, and `su` is one LED along `u`. Each read costs about as much as a few dozen arithmetic operations, so read each frame at most two or three times per LED.
 
 `Math.random()` works, but `hash` gives repeatable patterns and keeps loops seamless.

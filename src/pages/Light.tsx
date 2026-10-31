@@ -23,8 +23,9 @@ import {
   type Preset,
   type TransitionSpec,
 } from "../api";
-import { frames, useGallery, useStatus } from "../live";
+import { frames, GRID, useGallery, useStatus } from "../live";
 import { EffectCard } from "../components/EffectCard";
+import { TransitionList } from "../components/TransitionList";
 import {
   categoryOf,
   CategoryChips,
@@ -571,58 +572,22 @@ function PresetEditor({
   );
 }
 
-function TransitionEditor({
-  label,
-  spec,
-  onChange,
-}: {
-  label: string;
-  spec: TransitionSpec;
-  onChange: (s: TransitionSpec) => void;
-}) {
-  const { state } = useApp();
-  const transitions = state.scripts.filter((s) => s.kind === "transition");
-  const script = transitions.find((t) => t.id === spec.scriptId);
-  return (
-    <Card className="space-y-4 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-medium">{label}</span>
-        <span className="font-mono text-xs text-muted tabular-nums">
-          {(spec.durationMs / 1000).toFixed(1)} s
-        </span>
-      </div>
-      <Select
-        label={`${label} transition`}
-        value={spec.scriptId}
-        options={transitions.map((t) => ({ value: t.id, label: t.name }))}
-        onChange={(v) => onChange({ ...spec, scriptId: v, params: {} })}
-      />
-      <Slider
-        label={`${label} duration`}
-        value={spec.durationMs}
-        min={0}
-        max={6000}
-        step={100}
-        onChange={(v) => onChange({ ...spec, durationMs: v })}
-      />
-      {script && Object.keys(script.meta.params).length > 0 && (
-        <ParamControls
-          params={script.meta.params}
-          values={paramValues(script.meta, spec.params)}
-          onChange={(k, v) =>
-            onChange({ ...spec, params: { ...(spec.params ?? {}), [k]: v } })
-          }
-        />
-      )}
-    </Card>
-  );
-}
+const SLOTS = [
+  ["on", "Turning on", "Comes on instantly."],
+  ["off", "Turning off", "Goes off instantly."],
+  ["change", "Changing effect", "Changes instantly."],
+] as const;
 
 function Transitions({ fixture }: { fixture: Fixture }) {
-  const { reload } = useApp();
+  const { state, reload } = useApp();
   const { run } = useAction();
   const [t, setT] = useState(fixture.transitions);
   useEffect(() => setT(fixture.transitions), [fixture.transitions]);
+  const frames = useGallery("transition", fixture.id);
+  const mapped = state.fixtures.find((f) => f.fixture.id === fixture.id);
+  const layout = mapped?.layout?.points.length
+    ? mapped.layout
+    : { points: GRID, aspect: 1 };
   const save = useThrottled(
     useCallback(
       async (next: Fixture["transitions"]) => {
@@ -636,11 +601,12 @@ function Transitions({ fixture }: { fixture: Fixture }) {
     ),
     500,
   );
-  const update = (key: keyof Fixture["transitions"]) => (s: TransitionSpec) => {
-    const next = { ...t, [key]: s };
-    setT(next);
-    save(next);
-  };
+  const update =
+    (key: keyof Fixture["transitions"]) => (list: TransitionSpec[]) => {
+      const next = { ...t, [key]: list };
+      setT(next);
+      save(next);
+    };
   const preview = (patch: Record<string, unknown>) =>
     run(() => post(`/fixtures/${encodeURIComponent(fixture.id)}/state`, patch));
   return (
@@ -665,22 +631,20 @@ function Transitions({ fixture }: { fixture: Fixture }) {
         </div>
       }
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        <TransitionEditor
-          label="Turning on"
-          spec={t.on}
-          onChange={update("on")}
-        />
-        <TransitionEditor
-          label="Turning off"
-          spec={t.off}
-          onChange={update("off")}
-        />
-        <TransitionEditor
-          label="Changing effect"
-          spec={t.change}
-          onChange={update("change")}
-        />
+      <div className="grid gap-4 lg:grid-cols-3">
+        {SLOTS.map(([key, label, empty]) => (
+          <Card key={key} className="space-y-3 p-4">
+            <span className="block font-medium">{label}</span>
+            <TransitionList
+              label={label}
+              items={t[key]}
+              onChange={update(key)}
+              frames={frames}
+              layout={layout}
+              empty={empty}
+            />
+          </Card>
+        ))}
       </div>
     </Section>
   );

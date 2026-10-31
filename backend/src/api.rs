@@ -7,7 +7,7 @@ use crate::{
     engine::Command,
     model::{
         Device, Fixture, FixtureState, Look, Playlist, PlaylistEntry, Preset, ScriptKind,
-        ScriptSource, Season, slug,
+        ScriptSource, Season, TransitionChoice, TransitionSpec, slug,
     },
     playlist,
     script::Scripts,
@@ -358,20 +358,7 @@ async fn update_fixture(
         let device =
             db::device(&db, &body.device_id)?.ok_or_else(|| ApiError::not_found("The string"))?;
         check_range(&device, &body)?;
-        for t in [
-            &body.transitions.on,
-            &body.transitions.off,
-            &body.transitions.change,
-        ] {
-            if db::script_source(&db, &t.script_id, None)?
-                .is_none_or(|s| s.kind != ScriptKind::Transition)
-            {
-                return Err(ApiError::bad(format!(
-                    "No transition called {}.",
-                    t.script_id
-                )));
-            }
-        }
+        check_transitions(&db, body.transitions.all())?;
         db::save_fixture(&db, &body, &state)?;
         device.id
     };
@@ -718,11 +705,31 @@ struct PlaylistBody {
     #[serde(default)]
     shuffle: bool,
     #[serde(default)]
+    transitions: TransitionChoice,
+    #[serde(default)]
     season: Option<Season>,
     #[serde(default)]
     auto_enabled: bool,
     #[serde(default)]
     lights: Option<Vec<String>>,
+}
+
+/// Every transition must name a saved transition script.
+fn check_transitions<'a>(
+    db: &rusqlite::Connection,
+    specs: impl IntoIterator<Item = &'a TransitionSpec>,
+) -> std::result::Result<(), ApiError> {
+    for t in specs {
+        if db::script_source(db, &t.script_id, None)?
+            .is_none_or(|s| s.kind != ScriptKind::Transition)
+        {
+            return Err(ApiError::bad(format!(
+                "No transition called {}.",
+                t.script_id
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Checks a playlist and fills in its id and order; `id` is set for an update.
@@ -756,6 +763,7 @@ fn checked_playlist(
             return Err(ApiError::bad("Each entry plays for 1 second to 24 hours."));
         }
     }
+    check_transitions(db, body.transitions.iter())?;
     if let Some(season) = &body.season {
         season.validate().map_err(ApiError::bad)?;
     }
@@ -804,6 +812,7 @@ fn checked_playlist(
         name,
         entries: body.entries,
         shuffle: body.shuffle,
+        transitions: body.transitions,
         auto_enabled: body.auto_enabled && body.season.is_some(),
         season: body.season,
         lights,
@@ -1017,10 +1026,7 @@ async fn delete_script(
         let used_by: Vec<String> = db::fixtures(&db)?
             .into_iter()
             .filter(|(f, s)| {
-                s.look.script_id == id
-                    || [&f.transitions.on, &f.transitions.off, &f.transitions.change]
-                        .iter()
-                        .any(|t| t.script_id == id)
+                s.look.script_id == id || f.transitions.all().any(|t| t.script_id == id)
             })
             .map(|(f, _)| f.name)
             .chain(
@@ -1032,7 +1038,10 @@ async fn delete_script(
             .chain(
                 db::playlists(&db)?
                     .into_iter()
-                    .filter(|p| p.entries.iter().any(|e| e.script_id == id))
+                    .filter(|p| {
+                        p.entries.iter().any(|e| e.script_id == id)
+                            || p.transitions.iter().any(|t| t.script_id == id)
+                    })
                     .map(|p| format!("the {} playlist", p.name)),
             )
             .collect();

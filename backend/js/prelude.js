@@ -175,6 +175,236 @@ function sampleImage(img, frame, x, y) {
   return out;
 }
 
+/**
+ * Reads a frame (an `n * 3` array such as a transition's `ctx.a` or `ctx.b`)
+ * at any position, blending the nearby LEDs smoothly, so pictures can be
+ * moved, zoomed or warped. Create it once in `setup(ctx)`.
+ *   s.line: true when the fixture is a line (x or y doesn't vary); use `u` then.
+ *   s.sx, s.sy: typical gap between neighbouring LEDs sideways and up/down (s.su along u).
+ *   s.at(frame, x, y, rgb): the colour at x, y (0..1) written into rgb; returns rgb.
+ *   s.along(frame, u, rgb): the colour at u along the wire.
+ * At an LED's own position the result is exactly that LED's colour.
+ */
+function sampler(ctx) {
+  const { n, x, y } = ctx;
+  let x0 = Infinity,
+    x1 = -Infinity,
+    y0 = Infinity,
+    y1 = -Infinity;
+  for (let i = 0; i < n; i++) {
+    x0 = Math.min(x0, x[i]);
+    x1 = Math.max(x1, x[i]);
+    y0 = Math.min(y0, y[i]);
+    y1 = Math.max(y1, y[i]);
+  }
+  const line = n < 3 || x1 - x0 < 1e-3 || y1 - y0 < 1e-3;
+  // Typical gap to the next LED sideways and up/down, so columns far apart
+  // still blend into each other.
+  const gaps = (horizontal) => {
+    const found = [];
+    for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 64))) {
+      let best = Infinity;
+      for (let j = 0; j < n; j++) {
+        const dx = Math.abs(x[i] - x[j]),
+          dy = Math.abs(y[i] - y[j]);
+        if (horizontal ? dx <= dy : dy < dx) continue;
+        const d = Math.hypot(dx, dy);
+        if (d > 1e-6 && d < best) best = d;
+      }
+      if (best < Infinity) found.push(best);
+    }
+    found.sort((a, b) => a - b);
+    return found.length ? found[Math.floor(found.length / 2)] : 0;
+  };
+  let sx = gaps(true),
+    sy = gaps(false);
+  if (!sx) sx = sy || 0.05;
+  if (!sy) sy = sx;
+  const R = 1.25;
+  const gx = Math.max(1, Math.min(64, Math.floor(1 / (R * sx)))),
+    gy = Math.max(1, Math.min(64, Math.floor(1 / (R * sy))));
+  const cellOf = (px, py) =>
+    Math.min(gy - 1, Math.max(0, Math.floor(py * gy))) * gx + Math.min(gx - 1, Math.max(0, Math.floor(px * gx)));
+  const counts = new Int32Array(gx * gy + 1);
+  for (let i = 0; i < n; i++) counts[cellOf(x[i], y[i]) + 1]++;
+  for (let c = 0; c < gx * gy; c++) counts[c + 1] += counts[c];
+  const items = new Int32Array(n);
+  const fill = counts.slice();
+  for (let i = 0; i < n; i++) items[fill[cellOf(x[i], y[i])]++] = i;
+
+  // Positions in units of the gaps, so distances are cheap to compare.
+  const X = new Float32Array(n),
+    Y = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    X[i] = x[i] / sx;
+    Y[i] = y[i] / sy;
+  }
+  const R2 = R * R;
+  const K = 4;
+
+  // The K strongest inverse-distance weights (fading to 0 at the radius)
+  // at a point, normalised, into idx/w from `o`; -1 marks unused slots.
+  function weigh(px, py, idx, w, o) {
+    for (let k = 0; k < K; k++) {
+      idx[o + k] = -1;
+      w[o + k] = 0;
+    }
+    const cx = Math.min(gx - 1, Math.floor(px * gx)),
+      cy = Math.min(gy - 1, Math.floor(py * gy));
+    const qx = px / sx,
+      qy = py / sy;
+    let nearest = -1,
+      nd = Infinity;
+    for (let yy = Math.max(0, cy - 1); yy <= Math.min(gy - 1, cy + 1); yy++) {
+      const x0 = Math.max(0, cx - 1),
+        x1 = Math.min(gx - 1, cx + 1);
+      for (let k = counts[yy * gx + x0], end = counts[yy * gx + x1 + 1]; k < end; k++) {
+        const i = items[k];
+        const d2 = (X[i] - qx) ** 2 + (Y[i] - qy) ** 2;
+        if (d2 < nd) {
+          nd = d2;
+          nearest = i;
+        }
+        if (d2 >= R2) continue;
+        const f = 1 - d2 / R2;
+        const wi = d2 < 1e-8 ? 1e12 : (f * f) / d2;
+        // Keep the strongest K.
+        let slot = -1,
+          weakest = Infinity;
+        for (let s = 0; s < K; s++) {
+          if (w[o + s] < weakest) {
+            weakest = w[o + s];
+            slot = s;
+          }
+        }
+        if (wi > weakest) {
+          idx[o + slot] = i;
+          w[o + slot] = wi;
+        }
+      }
+    }
+    if (nearest < 0) {
+      for (let i = 0; i < n; i++) {
+        const d2 = (X[i] - qx) ** 2 + (Y[i] - qy) ** 2;
+        if (d2 < nd) {
+          nd = d2;
+          nearest = i;
+        }
+      }
+    }
+    let sum = 0;
+    for (let s = 0; s < K; s++) sum += w[o + s];
+    if (sum > 0) for (let s = 0; s < K; s++) w[o + s] /= sum;
+    else {
+      idx[o] = nearest;
+      w[o] = 1;
+    }
+    // Strongest first; unused slots last.
+    for (let a = 1; a < K; a++) {
+      for (let b = a; b > 0 && w[o + b] > w[o + b - 1]; b--) {
+        const ti = idx[o + b],
+          tw = w[o + b];
+        idx[o + b] = idx[o + b - 1];
+        w[o + b] = w[o + b - 1];
+        idx[o + b - 1] = ti;
+        w[o + b - 1] = tw;
+      }
+    }
+  }
+
+  // Weights precomputed on a raster about three points per LED gap; reading
+  // blends the four raster points around a position.
+  const rx = Math.max(2, Math.min(128, Math.ceil(3 / sx) + 1)),
+    ry = Math.max(2, Math.min(128, Math.ceil(3 / sy) + 1));
+  const tIdx = new Int32Array(rx * ry * K),
+    tW = new Float32Array(rx * ry * K);
+  if (!line) {
+    for (let j = 0; j < ry; j++) {
+      for (let i = 0; i < rx; i++) weigh(i / (rx - 1), j / (ry - 1), tIdx, tW, (j * rx + i) * K);
+    }
+  }
+  const oneIdx = new Int32Array(K),
+    oneW = new Float32Array(K);
+  const corner = new Int32Array(4),
+    cw = new Float64Array(4);
+
+  function at(frame, px, py, rgb) {
+    px = px < 0 ? 0 : px > 1 ? 1 : px;
+    py = py < 0 ? 0 : py > 1 ? 1 : py;
+    if (line) {
+      // No raster for lines (they use along); weigh directly.
+      weigh(px, py, oneIdx, oneW, 0);
+      rgb[0] = rgb[1] = rgb[2] = 0;
+      for (let s = 0; s < K; s++) {
+        const i = oneIdx[s];
+        if (i < 0) continue;
+        for (let c = 0; c < 3; c++) rgb[c] += frame[i * 3 + c] * oneW[s];
+      }
+      return rgb;
+    }
+    const fx = px * (rx - 1),
+      fy = py * (ry - 1);
+    let ix = Math.floor(fx),
+      iy = Math.floor(fy);
+    if (ix > rx - 2) ix = rx - 2;
+    if (iy > ry - 2) iy = ry - 2;
+    const ax = fx - ix,
+      ay = fy - iy;
+    // An LED exactly here is the strongest weight of the nearest raster point.
+    const near = ((iy + (ay > 0.5 ? 1 : 0)) * rx + ix + (ax > 0.5 ? 1 : 0)) * K;
+    const i0 = tIdx[near];
+    const ex = X[i0] - px / sx,
+      ey = Y[i0] - py / sy;
+    if (ex * ex + ey * ey < 1e-8) {
+      rgb[0] = frame[i0 * 3];
+      rgb[1] = frame[i0 * 3 + 1];
+      rgb[2] = frame[i0 * 3 + 2];
+      return rgb;
+    }
+    let r = 0,
+      g = 0,
+      b = 0;
+    const o0 = (iy * rx + ix) * K;
+    corner[0] = o0;
+    corner[1] = o0 + K;
+    corner[2] = o0 + rx * K;
+    corner[3] = o0 + rx * K + K;
+    cw[0] = (1 - ax) * (1 - ay);
+    cw[1] = ax * (1 - ay);
+    cw[2] = (1 - ax) * ay;
+    cw[3] = ax * ay;
+    for (let c = 0; c < 4; c++) {
+      const wc = cw[c];
+      if (wc === 0) continue;
+      const o = corner[c];
+      for (let s = 0; s < K; s++) {
+        const i = tIdx[o + s];
+        if (i < 0) break;
+        const w = tW[o + s] * wc;
+        const j = i * 3;
+        r += frame[j] * w;
+        g += frame[j + 1] * w;
+        b += frame[j + 2] * w;
+      }
+    }
+    rgb[0] = r;
+    rgb[1] = g;
+    rgb[2] = b;
+    return rgb;
+  }
+
+  function along(frame, pu, rgb) {
+    const f = clamp(pu) * Math.max(0, n - 1);
+    const i = Math.min(Math.floor(f), Math.max(0, n - 2));
+    const k = n > 1 ? f - i : 0;
+    const j = Math.min(i + 1, n - 1);
+    for (let c = 0; c < 3; c++) rgb[c] = frame[i * 3 + c] + (frame[j * 3 + c] - frame[i * 3 + c]) * k;
+    return rgb;
+  }
+
+  return { line, sx, sy, su: 1 / Math.max(1, n - 1), at, along };
+}
+
 var ease = {
   linear: (t) => t,
   inOut: (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),

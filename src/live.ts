@@ -170,7 +170,11 @@ export function usePreview(request: unknown | null) {
 
 /** Live thumbnails keyed by script id, plus which cards are on screen. */
 export type Gallery = Map<string, Uint8Array> & {
-  /** Marks a card visible or hidden; the server renders only visible ones. */
+  /**
+   * Marks a card visible or hidden; the server renders only visible ones.
+   * Counted, so several cards can show the same script: call it once with
+   * false for each true.
+   */
   watch(id: string, visible: boolean): void;
 };
 
@@ -181,17 +185,18 @@ export function useGallery(
 ): Gallery {
   const [gallery] = useState(() => {
     const g = new Map<string, Uint8Array>() as Gallery;
-    const visible = new Set<string>();
+    const visible = new Map<string, number>();
     let socket: WebSocket | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const send = () => {
       if (socket?.readyState === WebSocket.OPEN)
-        socket.send(JSON.stringify({ visible: [...visible] }));
+        socket.send(JSON.stringify({ visible: [...visible.keys()] }));
     };
     g.watch = (id, on) => {
-      if (on === visible.has(id)) return;
-      if (on) visible.add(id);
+      const count = (visible.get(id) ?? 0) + (on ? 1 : -1);
+      if (count > 0) visible.set(id, count);
       else visible.delete(id);
+      if (count > 0 === count - (on ? 1 : -1) > 0) return;
       clearTimeout(timer);
       timer = setTimeout(send, 60);
     };

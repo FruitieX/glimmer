@@ -105,10 +105,11 @@ export interface Fixture {
   count: number;
   reversed: boolean;
   layout: LayoutMode;
+  /** One of each list is picked at random each time; empty: instant. */
   transitions: {
-    on: TransitionSpec;
-    off: TransitionSpec;
-    change: TransitionSpec;
+    on: TransitionSpec[];
+    off: TransitionSpec[];
+    change: TransitionSpec[];
   };
   sort: number;
 }
@@ -163,6 +164,8 @@ export interface Playlist {
   name: string;
   entries: PlaylistEntry[];
   shuffle: boolean;
+  /** Used between entries instead of each light's own; empty: the light's. */
+  transitions: TransitionSpec[];
   season: Season | null;
   autoEnabled: boolean;
   lights: string[] | null;

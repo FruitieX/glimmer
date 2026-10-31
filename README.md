@@ -4,7 +4,7 @@ Live animations for [Twinkly](https://twinkly.com/) LED strings, controlled from
 
 - **Effects are small JavaScript modules** run in a sandboxed QuickJS runtime on the server, 25–30 times a second. They see each LED's mapped position, so the same effect suits a curtain, a tree or a handrail. Built-in effects include aurora, plasma, fire, snowfall, twinkle and comets.
 - **Write effects in the browser** with a live preview, version history, and an option to try a draft on a real string. Or describe one and let an AI write it.
-- **Transitions are scripts too.** Each light has its own transition for turning on, turning off, and changing effect: wipes, blooms, dissolves, sparkles.
+- **Transitions are scripts too.** Each light has its own transitions for turning on, turning off, and changing effect: wipes, irises, blinds, curtains, burns, melts, ripples, mosaics, glitches, starbursts and more. Give a slot several and one is picked at random each time, never the same twice in a row; a playlist can bring its own for the changes between its entries.
 - **Playlists** let effects take turns, each for its own time, in order or shuffled. A light plays one like an effect, and the string keeps streaming live (no movie per entry). Built-in seasonal playlists (Halloween, Christmas, Independence Day, New Year, Valentine's, Easter, Vappu, Juhannus and the four seasons) start by themselves on the first day of their window and hand back whatever the light showed before when it ends, unless someone picked something else meanwhile; shorter windows nest inside longer ones. Their schedule, dates, lights and effects can all be changed, and effects can be switched off one by one.
 - **Split one string into several lights.** For example, the two handrails of a staircase curtain become separate lights with their own effects and their own MQTT device. The string's settings draw every LED where the Twinkly app mapped it, coloured by light, so boundaries can be moved LED by LED without lighting the string, and a light whose first or last LEDs sit apart from the rest gets a hint to move them to its neighbour.
 - **Stored movies.** Effects that loop can be rendered once and uploaded to the string, which then plays them smoothly even on patchy Wi-Fi. Transitions are still streamed live, and the hand-over between the two is seamless.
@@ -82,6 +82,10 @@ Playlists are managed under `/api/playlists` (`GET`, `POST`, and `PUT`/`DELETE` 
 {
   "name": "Christmas",
   "shuffle": true,
+  "transitions": [
+    { "scriptId": "starburst", "durationMs": 1500, "params": { "rays": 7 } },
+    { "scriptId": "flash", "durationMs": 1200, "params": {} }
+  ],
   "season": { "from": "12-01", "to": "12-27" },
   "autoEnabled": true,
   "lights": null,
@@ -98,7 +102,11 @@ Playlists are managed under `/api/playlists` (`GET`, `POST`, and `PUT`/`DELETE` 
 }
 ```
 
-`season` is `null`, `MM-DD` dates (which may wrap over the new year), `{"easter": [-7, 1]}` (days around Easter Sunday) or `{"midsummer": [-1, 2]}` (days around Midsummer Eve, the Friday from 19 to 25 June). With `autoEnabled`, the playlist switches the chosen `lights` (all when `null`) to itself at the start of each window, without touching their power, and at the end puts back what they showed before, if they are still on it. Each light gets this once per window, and lights added during a window join from its next start. Set a light's playlist with `{"playlist": "<id or name>"}` on `/api/fixtures/<id>/state`; picking an effect or preset ends it.
+`season` is `null`, `MM-DD` dates (which may wrap over the new year), `{"easter": [-7, 1]}` (days around Easter Sunday) or `{"midsummer": [-1, 2]}` (days around Midsummer Eve, the Friday from 19 to 25 June). With `autoEnabled`, the playlist switches the chosen `lights` (all when `null`) to itself at the start of each window, without touching their power, and at the end puts back what they showed before, if they are still on it. Each light gets this once per window, and lights added during a window join from its next start. Set a light's playlist with `{"playlist": "<id or name>"}` on `/api/fixtures/<id>/state`; picking an effect or preset ends it. `transitions` (optional) are used between the entries instead of each light's own changing-effect transitions; with several, one is picked at random each time.
+
+## Transitions
+
+A light's `transitions` (in `/api/state` and `PUT /api/fixtures/<id>`) has `on`, `off` and `change` slots, each a list of `{"scriptId", "durationMs", "params"}`. With several in a slot one is picked at random each time, never the one picked last; an empty list switches instantly. A single object instead of a list (the older format) is accepted as a list of one. A `transition` object or `transitionMs` in a state change still overrides the slots for that change.
 
 ## Writing effects
 

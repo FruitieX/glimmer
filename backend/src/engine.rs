@@ -7,7 +7,10 @@ use crate::{
     color,
     device::{self, Client},
     layout,
-    model::{Device, Fixture, FixtureState, Look, ScriptKind, ScriptSource, TransitionSpec},
+    model::{
+        Device, Fixture, FixtureState, Look, ScriptKind, ScriptSource, TransitionChoice,
+        TransitionSpec,
+    },
     script::{Rgb, Scripts},
 };
 use serde::Serialize;
@@ -28,8 +31,11 @@ pub type ScriptLookup = Arc<dyn Fn(&str) -> Option<ScriptSource> + Send + Sync>;
 /// How a state change is shown.
 #[derive(Clone, Debug)]
 pub enum Transition {
-    /// The fixture's configured on/off/change transition.
+    /// One of the fixture's configured on/off/change transitions.
     Auto,
+    /// Like `Auto`, but a change of look uses one of these (a playlist's own
+    /// transitions) when there are any.
+    Change(TransitionChoice),
     Instant,
     Spec(TransitionSpec),
 }
@@ -460,6 +466,8 @@ impl Ramp {
     }
 }
 
+static NO_TRANSITIONS: TransitionChoice = TransitionChoice(Vec::new());
+
 struct FixtureRt {
     cfg: Fixture,
     layout: String,
@@ -471,6 +479,9 @@ struct FixtureRt {
     out: Vec<f32>,
     a: Vec<f32>,
     b: Vec<f32>,
+    /// The transition last picked for turning on, off and changing, so a
+    /// slot with several doesn't repeat one straight away.
+    picked: [Option<TransitionSpec>; 3],
 }
 
 impl FixtureRt {
@@ -699,6 +710,7 @@ impl Worker {
                         out: vec![0.0; len],
                         a: vec![0.0; len],
                         b: vec![0.0; len],
+                        picked: f.picked.clone(),
                     };
                     self.drop_fixture_instances(f);
                     let state = fresh.state.clone();
@@ -723,6 +735,7 @@ impl Worker {
                     out: vec![0.0; len],
                     a: vec![0.0; len],
                     b: vec![0.0; len],
+                    picked: Default::default(),
                 }),
             }
         }
@@ -877,17 +890,28 @@ impl Worker {
         let spec = match transition {
             Transition::Instant => None,
             Transition::Spec(s) => Some(s),
-            Transition::Auto => {
-                let t = &self.fixtures[idx].cfg.transitions;
-                if !was_visible && visible {
-                    Some(t.on.clone())
+            Transition::Auto | Transition::Change(_) => {
+                let f = &mut self.fixtures[idx];
+                let t = &f.cfg.transitions;
+                let (slot, choice) = if !was_visible && visible {
+                    (0, &t.on)
                 } else if was_visible && !visible {
-                    Some(t.off.clone())
+                    (1, &t.off)
                 } else if visible && new_layer.is_some() {
-                    Some(t.change.clone())
+                    match &transition {
+                        Transition::Change(own) if !own.is_empty() => (2, own),
+                        _ => (2, &t.change),
+                    }
                 } else {
-                    None
+                    (0, &NO_TRANSITIONS)
+                };
+                let pick = choice
+                    .pick(f.picked[slot].as_ref(), &mut rand::rng())
+                    .cloned();
+                if pick.is_some() {
+                    f.picked[slot] = pick.clone();
                 }
+                pick
             }
         };
         let changes_picture = was_visible != visible || (visible && new_layer.is_some());

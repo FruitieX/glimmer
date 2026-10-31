@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -19,11 +19,12 @@ import {
   type Playlist,
   type PlaylistEntry,
   type Season,
+  type TransitionSpec,
 } from "../api";
 import { GRID, useGallery, type Gallery } from "../live";
 import { useApp } from "../main";
-import { Mirror } from "../components/Mirror";
-import { EffectCard } from "../components/EffectCard";
+import { EffectCard, Thumb } from "../components/EffectCard";
+import { TransitionList } from "../components/TransitionList";
 import { CategoryChips, groupByCategory } from "../components/Categories";
 import {
   Badge,
@@ -37,38 +38,6 @@ import {
   Toggle,
   useAction,
 } from "../components/ui";
-
-/** A small live thumbnail of one effect. */
-function Thumb({
-  scriptId,
-  frames,
-  layout,
-  className,
-}: {
-  scriptId: string;
-  frames: Gallery;
-  layout: FixtureLayout;
-  className?: string;
-}) {
-  const source = useCallback(() => frames.get(scriptId), [frames, scriptId]);
-  const onVisible = useCallback(
-    (on: boolean) => frames.watch(scriptId, on),
-    [frames, scriptId],
-  );
-  useEffect(() => () => frames.watch(scriptId, false), [frames, scriptId]);
-  return (
-    <div className={cx("bg-gradient-to-b from-night to-ink", className)}>
-      <Mirror
-        points={layout.points}
-        aspect={layout.aspect}
-        source={source}
-        className="h-full"
-        dot={0.8}
-        onVisible={onVisible}
-      />
-    </div>
-  );
-}
 
 /** Thumbnails render on the first mapped light, like the effect gallery. */
 export function useThumbnails(fixtureId?: string) {
@@ -248,6 +217,11 @@ function PlaylistEditor({
     playlist?.entries ?? [],
   );
   const [shuffle, setShuffle] = useState(playlist?.shuffle ?? true);
+  const [transitions, setTransitions] = useState<TransitionSpec[]>(
+    playlist?.transitions ?? [],
+  );
+  const light = state.fixtures.find((f) => f.layout?.points.length);
+  const transitionFrames = useGallery("transition", light?.fixture.id);
   const [season, setSeason] = useState<Season | null>(playlist?.season ?? null);
   const [autoEnabled, setAutoEnabled] = useState(playlist?.autoEnabled ?? true);
   const [lights, setLights] = useState<string[] | null>(
@@ -275,7 +249,15 @@ function PlaylistEditor({
         : [0, 0];
 
   const save = async () => {
-    const body = { name, entries, shuffle, season, autoEnabled, lights };
+    const body = {
+      name,
+      entries,
+      shuffle,
+      transitions,
+      season,
+      autoEnabled,
+      lights,
+    };
     const ok = await run(
       () =>
         playlist
@@ -465,6 +447,20 @@ function PlaylistEditor({
             <Plus size={14} /> Add effect
           </Button>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <span className="block text-[13px] font-medium text-soft">
+          Transitions between effects
+        </span>
+        <TransitionList
+          label="Between effects"
+          items={transitions}
+          onChange={setTransitions}
+          frames={transitionFrames}
+          layout={layout}
+          empty="Each light uses its own transitions for changing effect."
+        />
       </div>
 
       <div className="space-y-3">

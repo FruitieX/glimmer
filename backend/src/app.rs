@@ -473,9 +473,10 @@ impl App {
         Ok(())
     }
 
-    /// Shows a fixture's next playlist entry with its change transition.
+    /// Shows a fixture's next playlist entry with the playlist's transitions
+    /// (or the fixture's change transitions).
     fn advance_playlist(&self, id: &str) -> Result<(), String> {
-        let (fixture, state) = {
+        let (fixture, state, transitions) = {
             let db = self.db()?;
             let Some((fixture, mut state)) = db::fixture(&db, id)? else {
                 return Ok(());
@@ -492,20 +493,25 @@ impl App {
             state.look = look;
             state.preset_id = None;
             db::save_state(&db, id, &state)?;
-            (fixture, state)
+            let transitions = db::playlists(&db)?
+                .into_iter()
+                .find(|p| p.id == playlist)
+                .map(|p| p.transitions)
+                .unwrap_or_default();
+            (fixture, state, transitions)
         };
-        self.show(&fixture, state);
+        self.show(&fixture, state, Transition::Change(transitions));
         Ok(())
     }
 
-    fn show(&self, fixture: &Fixture, state: FixtureState) {
+    fn show(&self, fixture: &Fixture, state: FixtureState, transition: Transition) {
         let id = fixture.id.clone();
         self.engine.send(
             &fixture.device_id,
             Command::Apply {
                 fixture: fixture.id.clone(),
                 state,
-                transition: Transition::Auto,
+                transition,
                 brightness_ms: None,
                 draft: None,
             },
@@ -579,7 +585,7 @@ impl App {
             }
         }
         for (f, state) in shown {
-            self.show(&f, state);
+            self.show(&f, state, Transition::Auto);
         }
         Ok(())
     }
@@ -840,6 +846,7 @@ mod tests {
                 name: "Calm".into(),
                 entries: vec![entry("aurora"), entry("plasma")],
                 shuffle: false,
+                transitions: Default::default(),
                 season: None,
                 auto_enabled: false,
                 lights: None,
