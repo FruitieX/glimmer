@@ -25,6 +25,7 @@ import { LightsPage } from "./pages/Lights";
 import { LightPage } from "./pages/Light";
 import { EffectsPage } from "./pages/Effects";
 import { PlaylistPage, PlaylistsPage } from "./pages/Playlists";
+import { AiPlaylistPage } from "./pages/AiPlaylist";
 import { LightSettingsPage } from "./pages/LightSettings";
 import { SettingsPage } from "./pages/Settings";
 import "./styles.css";
@@ -272,6 +273,8 @@ function Pages() {
       </Suspense>
     );
   if (parts[0] === "effects") return <EffectsPage />;
+  if (parts[0] === "playlists" && parts[1] === "new" && parts[2] === "ai")
+    return <AiPlaylistPage />;
   if (parts[0] === "playlists" && parts[1])
     return <PlaylistPage key={parts[1]} id={parts[1]} />;
   if (parts[0] === "playlists") return <PlaylistsPage />;

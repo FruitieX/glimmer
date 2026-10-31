@@ -9,7 +9,7 @@ use crate::{
         Device, Fixture, FixtureState, Look, Playlist, PlaylistEntry, Preset, ScriptKind,
         ScriptSource, Season, Settings, Slot, TransitionChoice, TransitionSpec, slug,
     },
-    playlist,
+    playlist, proposals,
     script::Scripts,
     web::{ApiError, Result, Server},
 };
@@ -67,6 +67,9 @@ pub fn routes() -> Router<Server> {
         .route("/api/scripts/{id}/versions/{version}", get(script_version))
         .route("/api/scripts/{id}/restore", post(restore_script))
         .route("/api/ai/generate", post(generate))
+        .route("/api/ai/name-preset/{id}", post(name_preset))
+        .route("/api/ai/suggest-looks", post(suggest_looks))
+        .route("/api/ai/playlist", post(ai_playlist))
         .route(
             "/api/images",
             post(upload_image).layer(axum::extract::DefaultBodyLimit::max(20 * 1024 * 1024)),
@@ -650,13 +653,14 @@ async fn create_preset(
     Json(body): Json<PresetBody>,
 ) -> Result<Json<Preset>> {
     s.user(&headers)?;
-    let name = body.name.trim().to_string();
-    if name.is_empty() {
-        return Err(ApiError::bad("Give the preset a name."));
-    }
     let preset = {
         let db = s.app.db()?;
         let presets = db::presets(&db)?;
+        // Unnamed presets are numbered: "Preset 1", "Preset 2"…
+        let name = match body.name.trim() {
+            "" => proposals::next_preset_name(&presets),
+            name => name.to_string(),
+        };
         if presets.iter().any(|p| p.name.eq_ignore_ascii_case(&name)) {
             return Err(ApiError::bad("A preset with that name already exists."));
         }
@@ -1147,6 +1151,189 @@ async fn generate(
         return Err(ApiError::bad("Describe what you'd like to see."));
     }
     Ok(Json(blocking(move || ai.generate(&body)).await?))
+}
+
+fn ai_of(s: &Server) -> Result<ai::Ai> {
+    s.app
+        .ai
+        .clone()
+        .ok_or_else(|| ApiError::bad("AI is not set up (no GLIMMER_AI_URL)."))
+}
+
+/// An effect's current code and what it declares.
+fn effect_of(
+    db: &rusqlite::Connection,
+    id: &str,
+) -> std::result::Result<(String, crate::script::Meta), String> {
+    let info = db::script(db, id)?
+        .filter(|i| i.kind == ScriptKind::Effect)
+        .ok_or_else(|| format!("No effect called {id}."))?;
+    let source = db::script_source(db, id, None)?
+        .ok_or_else(|| format!("No effect called {id}."))?
+        .source;
+    Ok((source, info.meta))
+}
+
+/// A look's params as an object (`null` and the like mean the defaults).
+fn params_object(params: &Value) -> Value {
+    if params.is_object() {
+        params.clone()
+    } else {
+        json!({})
+    }
+}
+
+/// Has the AI name a preset in the background; it keeps its name until
+/// then, and keeps it for good when naming fails.
+async fn name_preset(
+    State(s): S,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    s.user(&headers)?;
+    let ai = ai_of(&s)?;
+    let preset = db::presets(&*s.app.db()?)?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| ApiError::not_found("The preset"))?;
+    let app = s.app.clone();
+    tokio::task::spawn_blocking(move || match name_in_background(&app, &ai, &preset) {
+        Ok(name) => tracing::info!("the AI named preset {} {name:?}", preset.id),
+        Err(e) => tracing::warn!(
+            "the AI could not name preset {}, so it stays {:?}: {e}",
+            preset.id,
+            preset.name
+        ),
+    });
+    Ok(Json(json!({ "naming": true })))
+}
+
+fn name_in_background(
+    app: &crate::app::App,
+    ai: &ai::Ai,
+    preset: &Preset,
+) -> std::result::Result<String, String> {
+    let (source, meta) = effect_of(&*app.db()?, &preset.look.script_id)?;
+    let params = params_object(&preset.look.params);
+    let colors = crate::script::full_colors(&meta, &preset.look.colors);
+    let png = ai
+        .sends_images()
+        .then(|| crate::preview::look_png(&source, &params, &colors))
+        .and_then(|r| {
+            r.inspect_err(|e| tracing::warn!("drawing a preset: {e}"))
+                .ok()
+        });
+    let info = ai::LookInfo {
+        source: &source,
+        meta: &meta,
+        params: &params,
+        colors: &colors,
+    };
+    let name = ai.name_look(&info, png.as_deref())?;
+    let db = app.db()?;
+    let presets = db::presets(&db)?;
+    let mut current = presets
+        .iter()
+        .find(|p| p.id == preset.id)
+        .cloned()
+        .ok_or("it was deleted meanwhile")?;
+    if current.name != preset.name {
+        return Err(format!("it was renamed {:?} meanwhile", current.name));
+    }
+    let others = presets
+        .iter()
+        .filter(|p| p.id != preset.id)
+        .map(|p| p.name.as_str());
+    current.name = proposals::unique_name(&name, others);
+    db::save_preset(&db, &current)?;
+    drop(db);
+    app.changed();
+    Ok(current.name)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SuggestBody {
+    script_id: String,
+    prompt: String,
+    #[serde(default)]
+    params: Value,
+    #[serde(default)]
+    colors: Vec<String>,
+}
+
+/// Looks the AI proposes for an effect. Nothing is saved or applied.
+async fn suggest_looks(
+    State(s): S,
+    headers: HeaderMap,
+    Json(body): Json<SuggestBody>,
+) -> Result<Json<Value>> {
+    s.user(&headers)?;
+    let ai = ai_of(&s)?;
+    if body.prompt.trim().is_empty() {
+        return Err(ApiError::bad(
+            "Say what you'd like, e.g. warmer and slower.",
+        ));
+    }
+    let (source, meta, presets) = {
+        let db = s.app.db()?;
+        let (source, meta) = effect_of(&db, &body.script_id)?;
+        (source, meta, db::presets(&db)?)
+    };
+    let looks = blocking(move || {
+        let params = params_object(&body.params);
+        let colors = crate::script::full_colors(&meta, &body.colors);
+        let info = ai::LookInfo {
+            source: &source,
+            meta: &meta,
+            params: &params,
+            colors: &colors,
+        };
+        ai.suggest_looks(&info, body.prompt.trim(), |proposed| {
+            proposals::fit_looks(&meta, proposed, &colors, &presets)
+        })
+    })
+    .await?;
+    Ok(Json(json!({ "looks": looks })))
+}
+
+#[derive(Deserialize)]
+struct PromptBody {
+    prompt: String,
+}
+
+/// A playlist the AI proposes, with any new presets it needs, checked
+/// against what exists. Nothing is saved.
+async fn ai_playlist(
+    State(s): S,
+    headers: HeaderMap,
+    Json(body): Json<PromptBody>,
+) -> Result<Json<proposals::PlaylistProposal>> {
+    s.user(&headers)?;
+    let ai = ai_of(&s)?;
+    if body.prompt.trim().is_empty() {
+        return Err(ApiError::bad("Describe the playlist you'd like."));
+    }
+    let catalog = {
+        let db = s.app.db()?;
+        let scripts = db::scripts(&db)?;
+        let of = |kind: ScriptKind| {
+            scripts
+                .iter()
+                .filter(|i| i.kind == kind)
+                .map(|i| (i.id.clone(), i.meta.clone()))
+                .collect()
+        };
+        proposals::Catalog {
+            effects: of(ScriptKind::Effect),
+            transitions: of(ScriptKind::Transition),
+            presets: db::presets(&db)?,
+            playlist_names: db::playlists(&db)?.into_iter().map(|p| p.name).collect(),
+        }
+    };
+    Ok(Json(
+        blocking(move || ai.playlist(body.prompt.trim(), &catalog)).await?,
+    ))
 }
 
 async fn effect_docs(State(s): S, headers: HeaderMap) -> Result<String> {

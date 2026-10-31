@@ -3,7 +3,8 @@
 //! for checking scripts by eye. Each frame shows a 10 × 21 curtain and, below
 //! it, a 120-LED straight string. Effects show their defaults, or one of their
 //! `meta.looks` by name; `--look all` gives one row per look, the defaults
-//! first.
+//! first. [`look_png`] draws one look the same way, for the AI to see when
+//! it names a preset.
 
 use crate::script::{Rgb, Scripts};
 use image::{GenericImage, Rgb as Px, RgbImage};
@@ -120,6 +121,24 @@ fn sheet(
     Ok((img, slowest))
 }
 
+/// A PNG contact sheet of one look of an effect: six frames over six
+/// seconds in a row, for showing the AI what a look looks like.
+pub fn look_png(
+    source: &str,
+    params: &serde_json::Value,
+    colors: &[String],
+) -> Result<Vec<u8>, String> {
+    let colors: Vec<Rgb> = colors
+        .iter()
+        .filter_map(|c| crate::color::parse_hex(c))
+        .collect();
+    let (img, _) = sheet(source, false, params, &colors, 6.0, 6, 6)?;
+    let mut png = std::io::Cursor::new(vec![]);
+    img.write_to(&mut png, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(png.into_inner())
+}
+
 pub fn run(
     path: &str,
     out: &str,
@@ -189,4 +208,16 @@ pub fn run(
         meta.loops
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn draws_a_look_as_png() {
+        let source = crate::builtin::source("plasma").unwrap();
+        let png = super::look_png(source, &serde_json::json!({}), &[]).unwrap();
+        assert!(png.starts_with(b"\x89PNG"));
+        let img = image::load_from_memory(&png).unwrap();
+        assert_eq!(img.width(), 6 * (10 * super::CELL + 12));
+    }
 }

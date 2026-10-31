@@ -10,6 +10,7 @@ import {
   Plus,
   Shuffle,
   Trash2,
+  Wand2,
   X,
 } from "lucide-react";
 import {
@@ -214,9 +215,16 @@ export function PlaylistsPage() {
             season starts and step aside when it ends.
           </p>
         </div>
-        <Button variant="primary" onClick={() => navigate("/playlists/new")}>
-          <Plus size={16} /> New
-        </Button>
+        <div className="flex gap-2">
+          {state.ai && (
+            <Button onClick={() => navigate("/playlists/new/ai")}>
+              <Wand2 size={16} /> Create with AI
+            </Button>
+          )}
+          <Button variant="primary" onClick={() => navigate("/playlists/new")}>
+            <Plus size={16} /> New
+          </Button>
+        </div>
       </div>
       {other.length > 0 && (
         <section className="space-y-3">

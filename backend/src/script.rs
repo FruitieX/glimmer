@@ -85,7 +85,7 @@ fn lenient_looks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<EffectLoo
     })
 }
 
-fn is_hex_color(s: &str) -> bool {
+pub fn is_hex_color(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -128,8 +128,40 @@ impl Meta {
     }
 }
 
+impl Meta {
+    /// Whether one look fits this effect's params and colour slots, and
+    /// what is wrong when it doesn't.
+    pub fn look_fits(&self, look: &EffectLook) -> Result<(), String> {
+        let alone = Meta {
+            looks: vec![look.clone()],
+            ..self.clone()
+        };
+        let problems = alone.look_problems();
+        if problems.is_empty() {
+            return Ok(());
+        }
+        Err(problems.join("; ").replace("meta.looks[0] ", ""))
+    }
+}
+
+/// One `#rrggbb` colour per slot of `meta`: the given ones, then the slots'
+/// defaults.
+pub fn full_colors(meta: &Meta, colors: &[String]) -> Vec<String> {
+    meta.colors
+        .iter()
+        .enumerate()
+        .map(|(i, slot)| {
+            colors
+                .get(i)
+                .filter(|c| is_hex_color(c))
+                .unwrap_or(&slot.default)
+                .to_ascii_lowercase()
+        })
+        .collect()
+}
+
 /// Why `value` doesn't suit the param declared as `param`, if it doesn't.
-fn param_problem(param: &serde_json::Value, value: &serde_json::Value) -> Option<String> {
+pub fn param_problem(param: &serde_json::Value, value: &serde_json::Value) -> Option<String> {
     match param.get("type").and_then(|t| t.as_str()).unwrap_or("") {
         "number" => {
             let Some(v) = value.as_f64() else {
@@ -287,15 +319,10 @@ impl Scripts {
     pub fn register(&self, key: &str, source: &str) -> Result<Meta, String> {
         let mut meta = self.register_all(key, source)?;
         let looks = std::mem::take(&mut meta.looks);
-        for look in looks {
-            let alone = Meta {
-                looks: vec![look],
-                ..meta.clone()
-            };
-            if alone.look_problems().is_empty() {
-                meta.looks.extend(alone.looks);
-            }
-        }
+        meta.looks = looks
+            .into_iter()
+            .filter(|l| meta.look_fits(l).is_ok())
+            .collect();
         for look in &mut meta.looks {
             for c in &mut look.colors {
                 *c = c.to_ascii_lowercase();

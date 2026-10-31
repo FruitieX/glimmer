@@ -27,12 +27,13 @@ import {
   type ScriptKind,
   type VersionInfo,
 } from "../api";
-import { GRIDS, usePreview } from "../live";
+import { GRIDS, gridLayout, usePreview } from "../live";
 import { Link, useApp, useRoute } from "../main";
 import { CodeEditor } from "../components/CodeEditor";
 import { Mirror } from "../components/Mirror";
 import { ColorControls, ParamControls } from "../components/controls";
 import { LookChips } from "../components/Looks";
+import { nextPresetName, saveNamedByAi, SuggestLooks } from "../components/Ai";
 import {
   Badge,
   Button,
@@ -396,6 +397,27 @@ function Editor({
                     Loops seamlessly · can play as a stored movie
                   </Badge>
                 )}
+                {loaded && kind === "effect" && (
+                  <div className="border-t border-line pt-5">
+                    <SuggestLooks
+                      key={loaded.info.id}
+                      scriptId={loaded.info.id}
+                      meta={meta}
+                      params={previewParams}
+                      colors={colorValues(meta, previewColors)}
+                      fixtureId={fixtureId}
+                      aspect={
+                        fixture?.layout?.aspect ??
+                        (gridLayout(fixtureId)?.aspect || 1)
+                      }
+                      tryLabel="Use in the try settings"
+                      onTry={(look) => {
+                        setPreviewParams(look.params);
+                        setPreviewColors(look.colors);
+                      }}
+                    />
+                  </div>
+                )}
               </Card>
             </Section>
           )}
@@ -641,21 +663,51 @@ function EffectPresets({
             }
           }}
         >
-          <Field label="Name">
+          <Field
+            label="Name"
+            hint={
+              naming === "new"
+                ? `Leave it empty for “${nextPresetName(state.presets)}”.`
+                : undefined
+            }
+          >
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Cosy evening"
+              placeholder={
+                naming === "new"
+                  ? nextPresetName(state.presets)
+                  : "Cosy evening"
+              }
               autoFocus
             />
           </Field>
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={busy || !name.trim()}
-          >
-            Save
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row-reverse">
+            <Button
+              variant="primary"
+              className="w-full sm:flex-1"
+              disabled={busy || (naming !== "new" && !name.trim())}
+            >
+              Save
+            </Button>
+            {naming === "new" && state.ai && (
+              <Button
+                type="button"
+                className="w-full sm:flex-1"
+                disabled={busy}
+                onClick={() => {
+                  // The dialog closes at once; the name follows later.
+                  setNaming(null);
+                  run(async () => {
+                    await saveNamedByAi(look);
+                    reload();
+                  }, "Saved; the AI is naming it");
+                }}
+              >
+                <Wand2 size={16} /> Name it with AI
+              </Button>
+            )}
+          </div>
         </form>
       </Dialog>
     </Section>

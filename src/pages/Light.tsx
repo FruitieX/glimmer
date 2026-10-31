@@ -10,7 +10,9 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Wand2,
 } from "lucide-react";
+import { nextPresetName, saveNamedByAi, SuggestLooks } from "../components/Ai";
 import {
   colorValues,
   dayLabel,
@@ -444,6 +446,32 @@ function Light({
                 sendParams({ [k]: v });
               }}
             />
+            {script && (
+              <div className="border-t border-line pt-5">
+                <SuggestLooks
+                  key={script.id}
+                  scriptId={script.id}
+                  meta={meta}
+                  params={item.state.look.params}
+                  colors={colors}
+                  fixtureId={fixture.id}
+                  aspect={layout?.aspect ?? 1}
+                  tryLabel={`Show on ${fixture.name}`}
+                  wide
+                  onTry={(look) => {
+                    setParams(paramValues(meta, look.params));
+                    setColors(colorValues(meta, look.colors));
+                    run(() =>
+                      send({
+                        params: look.params,
+                        replaceParams: true,
+                        colors: look.colors,
+                      }),
+                    );
+                  }}
+                />
+              </div>
+            )}
           </Card>
         </Section>
       )}
@@ -465,12 +493,31 @@ function Presets({
   /** The playing playlist entry, when this look changed it. */
   entry?: { playlist: Playlist; index: number };
 }) {
-  const { reload } = useApp();
+  const { state, reload } = useApp();
   const { run, busy } = useAction();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [useInPlaylist, setUseInPlaylist] = useState(true);
   const [editing, setEditing] = useState<Preset | null>(null);
+  /** Makes a new preset the look of the playing playlist entry, if asked. */
+  const applyToEntry = async (preset: Preset) => {
+    if (!entry || !useInPlaylist) return;
+    const { playlist, index } = entry;
+    await put(`/playlists/${encodeURIComponent(playlist.id)}`, {
+      ...playlist,
+      entries: playlist.entries.map((e, i) =>
+        i === index
+          ? {
+              ...e,
+              presetId: preset.id,
+              scriptId: look.scriptId,
+              params: look.params,
+              colors: look.colors,
+            }
+          : e,
+      ),
+    });
+  };
   return (
     <Section
       title="Presets"
@@ -535,23 +582,7 @@ function Presets({
             e.preventDefault();
             const ok = await run(async () => {
               const preset = await post<Preset>("/presets", { name, look });
-              if (entry && useInPlaylist) {
-                const { playlist, index } = entry;
-                await put(`/playlists/${encodeURIComponent(playlist.id)}`, {
-                  ...playlist,
-                  entries: playlist.entries.map((e, i) =>
-                    i === index
-                      ? {
-                          ...e,
-                          presetId: preset.id,
-                          scriptId: look.scriptId,
-                          params: look.params,
-                          colors: look.colors,
-                        }
-                      : e,
-                  ),
-                });
-              }
+              await applyToEntry(preset);
               return true;
             }, "Preset saved");
             if (ok) {
@@ -561,11 +592,14 @@ function Presets({
             }
           }}
         >
-          <Field label="Name">
+          <Field
+            label="Name"
+            hint={`Leave it empty for “${nextPresetName(presets)}”.`}
+          >
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Cosy evening"
+              placeholder={nextPresetName(presets)}
               autoFocus
             />
           </Field>
@@ -579,13 +613,34 @@ function Presets({
               Use it for this effect in {entry.playlist.name}
             </label>
           )}
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={busy || !name.trim()}
-          >
-            Save preset
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row-reverse">
+            <Button
+              variant="primary"
+              className="w-full sm:flex-1"
+              disabled={busy}
+            >
+              Save preset
+            </Button>
+            {state.ai && (
+              <Button
+                type="button"
+                className="w-full sm:flex-1"
+                disabled={busy}
+                onClick={() => {
+                  // The dialog closes at once; the name follows later.
+                  setSaving(false);
+                  setName("");
+                  run(async () => {
+                    const preset = await saveNamedByAi(look);
+                    await applyToEntry(preset);
+                    reload();
+                  }, "Saved; the AI is naming it");
+                }}
+              >
+                <Wand2 size={16} /> Name it with AI
+              </Button>
+            )}
+          </div>
         </form>
       </Dialog>
       {editing && (

@@ -1,4 +1,5 @@
-// End-to-end check: the real server and UI against a fake Twinkly string.
+// End-to-end check: the real server and UI against a fake Twinkly string
+// and a fake AI endpoint.
 // Needs `npm run build` and a built backend (GLIMMER_BIN, default backend/target/debug/glimmer).
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -8,6 +9,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright";
 import { startFakeTwinkly } from "./fake-twinkly.mjs";
+import { startFakeAi } from "./fake-ai.mjs";
 
 const port = 3190;
 const origin = `http://127.0.0.1:${port}`;
@@ -17,6 +19,7 @@ const shots = "test-results";
 mkdirSync(shots, { recursive: true });
 
 const fake = startFakeTwinkly({ port: 8099, leds: 210, rgbw: true });
+const ai = startFakeAi({ port: 8097 });
 const server = spawn(bin, [], {
   env: {
     ...process.env,
@@ -25,6 +28,10 @@ const server = spawn(bin, [], {
     GLIMMER_ORIGIN: origin,
     GLIMMER_BIND: `127.0.0.1:${port}`,
     GLIMMER_STATIC_DIR: "dist",
+    // Never the real AI endpoint, whatever the environment says.
+    GLIMMER_AI_URL: "http://127.0.0.1:8097/v1",
+    GLIMMER_AI_KEY: "",
+    GLIMMER_AI_MODEL: "fake",
     RUST_LOG: "glimmer=warn",
   },
   stdio: ["ignore", "inherit", "inherit"],
@@ -135,6 +142,34 @@ try {
   await page.getByRole("button", { name: "Save preset" }).click();
   await page.getByRole("button", { name: "Party", exact: true }).waitFor();
 
+  // A preset needs no name: an empty one is numbered.
+  const presetNamed = async (name) =>
+    (await (await page.request.get(`${origin}/api/state`)).json()).presets.find(
+      (p) => p.name === name,
+    );
+  await page.getByRole("button", { name: "Save current look" }).click();
+  await page.getByRole("button", { name: "Save preset" }).click();
+  await page.getByRole("button", { name: "Preset 1", exact: true }).waitFor();
+  // "Name it with AI" saves it as the next number and closes the dialog at
+  // once; the AI's name, from a picture of the look, replaces it.
+  await page.getByRole("button", { name: "Save current look" }).click();
+  await page.getByRole("dialog").getByText("Preset 2").first().waitFor();
+  await page.screenshot({ path: `${shots}/preset-dialog.png` });
+  const askedAt = Date.now();
+  await page.getByRole("button", { name: "Name it with AI" }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden", timeout: 1000 });
+  assert.ok(Date.now() - askedAt < 1000, "the dialog closes at once");
+  await page.getByRole("button", { name: "Preset 2", exact: true }).waitFor();
+  assert.ok(await presetNamed("Preset 2"), "saved under its number first");
+  await page.getByRole("button", { name: "Ember Glow", exact: true }).waitFor();
+  assert.equal(await presetNamed("Preset 2"), undefined, "renamed");
+  {
+    const naming = ai.state.requests.filter((r) => r.kind === "name");
+    assert.equal(naming.length, 1);
+    assert.ok(naming[0].pngImage, "naming sends a PNG of the look");
+    assert.ok(naming[0].text.includes("Rainbow"), "and the effect");
+  }
+
   // A built-in look applies its params and colours as they are: settings
   // changed before go back to their defaults.
   {
@@ -185,6 +220,82 @@ try {
     assert.deepEqual(
       (await current()).look.colors,
       plasma.meta.colors.map((c) => c.default),
+    );
+
+    // Ask AI for settings: proposed looks show as cards with live
+    // previews, and nothing changes until one is tried or saved.
+    const before = await current();
+    await page
+      .getByLabel("Ask AI for Plasma settings")
+      .fill("warmer and slower");
+    await page.getByRole("button", { name: "Ask AI" }).click();
+    const suggestions = page.getByRole("region", { name: "AI suggestions" });
+    await suggestions.getByText("Slow Ember").waitFor();
+    await suggestions.getByText("Frosted Pine").waitFor();
+    assert.equal(
+      await suggestions.getByRole("button", { name: /^Try / }).count(),
+      2,
+      "the look without a name is left out",
+    );
+    assert.deepEqual(await current(), before, "nothing applied yet");
+    await until(
+      "lit suggestion previews",
+      async () =>
+        (await litFraction(
+          page,
+          'section[aria-label="AI suggestions"] canvas:nth-of-type(2)',
+        )) > 0.01,
+    );
+    await suggestions.getByRole("button", { name: "Try Slow Ember" }).click();
+    await until(
+      "the suggestion on the light",
+      async () => (await current()).look.colors[0] === "#ff7a1a",
+    );
+    await suggestions
+      .getByRole("button", { name: "Save Frosted Pine as a preset" })
+      .click();
+    await until("the saved suggestion", () => presetNamed("Frosted Pine"));
+    assert.equal((await presetNamed("Frosted Pine")).look.scriptId, "plasma");
+    await suggestions.evaluate((s) => s.scrollIntoView({ block: "center" }));
+    await delay(1000);
+    await page.screenshot({ path: `${shots}/light-ai-looks.png` });
+  }
+
+  // When the AI turns down pictures, naming asks again without one and
+  // sends text only from then on.
+  {
+    const look = (await (await page.request.get(`${origin}/api/state`)).json())
+      .fixtures[0].state.look;
+    const nameOne = async () => {
+      const saved = await page.request.post(`${origin}/api/presets`, {
+        headers: { Origin: origin },
+        data: { name: "", look },
+      });
+      const preset = await saved.json();
+      assert.equal(preset.name, "Preset 2");
+      const asked = await page.request.post(
+        `${origin}/api/ai/name-preset/${preset.id}`,
+        { headers: { Origin: origin } },
+      );
+      assert.ok(asked.ok(), `name-preset: ${await asked.text()}`);
+      return preset.id;
+    };
+    ai.state.rejectImages = true;
+    ai.state.nameDelayMs = 0;
+    const before = ai.state.requests.length;
+    await nameOne();
+    await until("the text-only name", () => presetNamed("Quiet Harbour"));
+    assert.deepEqual(
+      ai.state.requests.slice(before).map((r) => r.hasImage),
+      [true, false],
+      "one try with the picture, then without",
+    );
+    await nameOne();
+    await until("another name", () => presetNamed("Velvet Dusk"));
+    assert.deepEqual(
+      ai.state.requests.slice(before + 2).map((r) => r.hasImage),
+      [false],
+      "no more pictures",
     );
   }
 
@@ -604,6 +715,65 @@ try {
   );
   await page.getByRole("button", { name: "Playing on Test curtain" }).waitFor();
 
+  // Create with AI: the proposal is reviewed first (the playlist and each
+  // new preset), and only "Create" saves, new presets before the playlist.
+  {
+    await page.goto(`${origin}/playlists`);
+    await page.getByRole("button", { name: "Create with AI" }).click();
+    await page
+      .getByLabel("Describe the playlist")
+      .fill("Cosy autumn evening, 4 effects, slow");
+    const playlistsBefore = (await getState()).playlists.length;
+    await page.getByRole("button", { name: "Propose", exact: true }).click();
+    await page.getByRole("heading", { name: "New presets" }).waitFor();
+    assert.equal(
+      await page.getByLabel("Playlist name").inputValue(),
+      "Cosy Autumn Evening",
+    );
+    await page.getByText(/no-such-effect.*no such effect/).waitFor();
+    await page.getByText("New preset Autumn Hearth").waitFor();
+    await page
+      .getByRole("checkbox", { name: "Create the preset Autumn Hearth" })
+      .waitFor();
+    assert.equal((await getState()).playlists.length, playlistsBefore);
+    assert.equal(
+      await presetNamed("Autumn Hearth"),
+      undefined,
+      "nothing saved yet",
+    );
+    await delay(1500);
+    await page.screenshot({ path: `${shots}/ai-playlist.png`, fullPage: true });
+    await page.getByRole("button", { name: "Create (2 changes)" }).click();
+    await page.getByRole("heading", { name: "Cosy Autumn Evening" }).waitFor();
+    const made = (await getState()).playlists.find(
+      (p) => p.name === "Cosy Autumn Evening",
+    );
+    assert.ok(made, "the playlist exists");
+    assert.equal(new URL(page.url()).pathname, `/playlists/${made.id}`);
+    assert.equal(made.entries.length, 3);
+    assert.equal(made.autoEnabled, false);
+    const hearth = await presetNamed("Autumn Hearth");
+    assert.ok(hearth, "the new preset exists");
+    assert.ok(
+      made.entries.some((e) => e.presetId === hearth.id),
+      "the playlist uses the new preset",
+    );
+    // Discard saves nothing.
+    await page.goto(`${origin}/playlists/new/ai`);
+    await page.getByLabel("Describe the playlist").fill("Something else");
+    await page.getByRole("button", { name: "Propose", exact: true }).click();
+    await page.getByRole("heading", { name: "New presets" }).waitFor();
+    await page.getByRole("button", { name: "Discard" }).click();
+    await page.getByRole("heading", { name: "Playlists" }).waitFor();
+    assert.equal((await getState()).playlists.length, playlistsBefore + 1);
+    assert.equal(
+      (await getState()).presets.filter((p) =>
+        p.name.startsWith("Autumn Hearth"),
+      ).length,
+      1,
+    );
+  }
+
   // Turning off fades out live and switches the string off.
   await page.goto(origin);
   await page.getByRole("switch", { name: "Test curtain power" }).click();
@@ -642,6 +812,35 @@ try {
   await page.getByText("Try settings").waitFor();
   await page.getByRole("button", { name: "View the code" }).waitFor();
   await page.screenshot({ path: `${shots}/editor-phone.png`, fullPage: true });
+  // The AI's suggestions and playlist review on a phone.
+  await page.getByLabel("Ask AI for Snowfall settings").fill("colder");
+  await page.getByRole("button", { name: "Ask AI" }).click();
+  const phoneSuggestions = page.getByRole("region", { name: "AI suggestions" });
+  await phoneSuggestions.getByText("Slow Ember").waitFor();
+  await phoneSuggestions.evaluate((s) => s.scrollIntoView({ block: "center" }));
+  await delay(1500);
+  await page.screenshot({ path: `${shots}/editor-ai-looks-phone.png` });
+  await page.goto(`${origin}/lights/Test%20curtain`);
+  await page.getByText("Rainbow settings").waitFor();
+  await page.getByRole("button", { name: "Save current look" }).click();
+  await page.getByRole("dialog").getByText("Name it with AI").waitFor();
+  await page.screenshot({ path: `${shots}/preset-dialog-phone.png` });
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Ask AI for Rainbow settings").fill("warmer");
+  await page.getByRole("button", { name: "Ask AI" }).click();
+  await phoneSuggestions.getByText("Frosted Pine").waitFor();
+  await phoneSuggestions.evaluate((s) => s.scrollIntoView({ block: "center" }));
+  await delay(1500);
+  await page.screenshot({ path: `${shots}/light-ai-looks-phone.png` });
+  await page.goto(`${origin}/playlists/new/ai`);
+  await page.getByLabel("Describe the playlist").fill("Cosy autumn evening");
+  await page.getByRole("button", { name: "Propose", exact: true }).click();
+  await page.getByRole("heading", { name: "New presets" }).waitFor();
+  await delay(1500);
+  await page.screenshot({
+    path: `${shots}/ai-playlist-phone.png`,
+    fullPage: true,
+  });
   await page.goto(`${origin}/playlists`);
   await page.getByRole("button", { name: /^Christmas/ }).waitFor();
   await delay(1500);
@@ -821,7 +1020,7 @@ try {
 
   assert.deepEqual(errors, [], "no browser errors");
   console.log(
-    "UI checks passed: add string, light settings page, stream, effects, presets, shared and own shuffled transitions, settings, editor preview, new script, movie upload, playlist pages, power off, splitting a string.",
+    "UI checks passed: add string, light settings page, stream, effects, presets, shared and own shuffled transitions, settings, editor preview, new script, movie upload, playlist pages, AI preset names (with and without pictures), AI looks, AI playlists, power off, splitting a string.",
   );
 } catch (e) {
   failed = true;
@@ -830,6 +1029,7 @@ try {
   await browser.close();
   server.kill();
   fake.close();
+  ai.close();
   rmSync(data, { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);

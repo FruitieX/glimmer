@@ -13,6 +13,7 @@ mod mqtt;
 mod oidc;
 mod playlist;
 mod preview;
+mod proposals;
 mod script;
 mod web;
 mod ws;
