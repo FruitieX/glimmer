@@ -421,7 +421,9 @@ mod tests {
             let (meta, took) =
                 Scripts::check(source, transition).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(!meta.name.is_empty(), "{name} has no name");
-            assert!(took < Duration::from_millis(20), "{name} took {took:?}");
+            // Debug builds on shared CI machines run several times slower.
+            let limit = Duration::from_millis(if cfg!(debug_assertions) { 60 } else { 20 });
+            assert!(took < limit, "{name} took {took:?}");
         }
     }
 
