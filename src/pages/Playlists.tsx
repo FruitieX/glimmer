@@ -25,7 +25,14 @@ import {
   type Season,
   type TransitionSpec,
 } from "../api";
-import { frames as frames0, GRID, useGallery, type Gallery } from "../live";
+import {
+  frames as frames0,
+  GRID,
+  GRIDS,
+  gridLayout,
+  useGallery,
+  type Gallery,
+} from "../live";
 import { Link, useApp, useRoute } from "../main";
 import { Mirror } from "../components/Mirror";
 import { EffectCard, Thumb } from "../components/EffectCard";
@@ -45,7 +52,7 @@ import {
 
 /**
  * Thumbnails render on a light's layout: the first mapped light by default,
- * the 10 × 21 grid for "".
+ * or a simulated grid ("grid:25x25").
  */
 export function useThumbnails(fixtureId?: string) {
   const { state } = useApp();
@@ -53,10 +60,17 @@ export function useThumbnails(fixtureId?: string) {
     fixtureId === undefined
       ? state.fixtures.find((f) => f.layout?.points.length)
       : state.fixtures.find((f) => f.fixture.id === fixtureId);
+  const grid = gridLayout(fixtureId);
   const layout = light?.layout?.points.length
     ? light.layout
-    : { points: GRID, aspect: 1 };
-  return { layout, frames: useGallery("effect", light?.fixture.id) };
+    : (grid ?? { points: GRID, aspect: 1 });
+  return {
+    layout,
+    frames: useGallery(
+      "effect",
+      light?.fixture.id ?? (grid ? fixtureId : undefined),
+    ),
+  };
 }
 
 /**
@@ -259,7 +273,7 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
       (
         mapped.find((f) => playlist && f.state.playlistId === playlist.id) ??
         mapped[0]
-      )?.fixture.id ?? "",
+      )?.fixture.id ?? GRIDS[1].value,
   );
   const light = state.fixtures.find((f) => f.fixture.id === lightId);
   const { layout, frames } = useThumbnails(lightId);
@@ -427,7 +441,7 @@ function PlaylistEditor({ playlist }: { playlist: Playlist | null }) {
                     value: f.fixture.id,
                     label: f.fixture.name,
                   })),
-                  { value: "", label: "A 10 × 21 grid" },
+                  ...GRIDS,
                 ]}
               />
             </Field>

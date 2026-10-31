@@ -409,6 +409,16 @@ try {
     async () => (await litFraction(page, "main canvas:nth-of-type(2)")) > 0.01,
   );
   await page.screenshot({ path: `${shots}/editor.png`, fullPage: true });
+  // Previews can also run on simulated grids.
+  await page
+    .getByRole("combobox", { name: "Preview on" })
+    .selectOption("grid:50x50");
+  await delay(2000);
+  assert.ok(
+    (await litFraction(page, "main canvas:nth-of-type(2)")) > 0.01,
+    "the grid preview is lit",
+  );
+  await page.screenshot({ path: `${shots}/editor-grid.png`, fullPage: true });
 
   // Create an effect from the template and save it.
   await page.goto(`${origin}/effects`);

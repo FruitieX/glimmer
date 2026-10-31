@@ -27,7 +27,7 @@ import {
   type ScriptKind,
   type VersionInfo,
 } from "../api";
-import { usePreview } from "../live";
+import { GRIDS, usePreview } from "../live";
 import { Link, useApp, useRoute } from "../main";
 import { CodeEditor } from "../components/CodeEditor";
 import { Mirror } from "../components/Mirror";
@@ -121,7 +121,7 @@ function Editor({
   const builtin = loaded?.info.builtin ?? false;
   const lights = state.fixtures.filter((f) => f.layout?.points.length);
   const [fixtureId, setFixtureId] = useState<string>(
-    lights[0]?.fixture.id ?? "",
+    lights[0]?.fixture.id ?? GRIDS[1].value,
   );
   const [previewParams, setPreviewParams] = useState<Record<string, unknown>>(
     {},
@@ -315,7 +315,7 @@ function Editor({
                       value: f.fixture.id,
                       label: f.fixture.name,
                     })),
-                    { value: "", label: "A 10 × 21 grid" },
+                    ...GRIDS,
                   ]}
                 />
               </Field>
@@ -337,7 +337,7 @@ function Editor({
                   />
                 </div>
               )}
-              {kind === "effect" && fixtureId && (
+              {kind === "effect" && fixture && (
                 <Button
                   className="w-full"
                   variant={trying ? "primary" : "subtle"}

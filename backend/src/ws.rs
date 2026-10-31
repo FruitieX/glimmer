@@ -119,12 +119,10 @@ async fn preview_socket(s: Server, socket: WebSocket) {
                 Some(Ok(Message::Text(text))) => {
                     match serde_json::from_str::<PreviewRequest>(&text) {
                         Ok(req) => {
-                            let layout = req.fixture_id.as_ref().and_then(|id| {
-                                let db = s.app.db().ok()?;
-                                let (f, _) = db::fixture(&db, id).ok()??;
-                                let d = db::device(&db, &f.device_id).ok()??;
-                                Some(layout::fixture_layout(&d, &f))
-                            });
+                            let layout = req
+                                .fixture_id
+                                .as_ref()
+                                .and_then(|id| target_layout(&*s.app.db().ok()?, id));
                             if req_tx.send((req, layout)).is_err() {
                                 break;
                             }
@@ -149,11 +147,37 @@ async fn preview_socket(s: Server, socket: WebSocket) {
     }
 }
 
+/// The default preview without a light: a 25 × 25 grid.
 fn grid() -> layout::FixtureLayout {
-    let points = (0..210)
-        .map(|i| [(i / 21) as f32 / 9.0, 1.0 - (i % 21) as f32 / 20.0, 0.5])
+    simulated_grid(25, 25)
+}
+
+/// A grid of `cols` strands of `rows` LEDs, hanging from the top like a curtain.
+fn simulated_grid(cols: usize, rows: usize) -> layout::FixtureLayout {
+    let span = |n: usize| (n.max(2) - 1) as f32;
+    let points = (0..cols * rows)
+        .map(|i| {
+            [
+                (i / rows) as f32 / span(cols),
+                1.0 - (i % rows) as f32 / span(rows),
+                0.5,
+            ]
+        })
         .collect();
-    layout::FixtureLayout::plain(points, 1.0)
+    layout::FixtureLayout::plain(points, cols as f32 / rows as f32)
+}
+
+/// Where a preview renders: a light by id, or a simulated grid named like
+/// `grid:50x50` (up to 100 × 100).
+fn target_layout(db: &rusqlite::Connection, id: &str) -> Option<layout::FixtureLayout> {
+    if let Some(size) = id.strip_prefix("grid:") {
+        let (c, r) = size.split_once('x')?;
+        let (c, r): (usize, usize) = (c.parse().ok()?, r.parse().ok()?);
+        return ((1..=100).contains(&c) && (1..=100).contains(&r)).then(|| simulated_grid(c, r));
+    }
+    let (f, _) = db::fixture(db, id).ok()??;
+    let d = db::device(db, &f.device_id).ok()??;
+    Some(layout::fixture_layout(&d, &f))
 }
 
 fn preview_thread(rx: mpsc::Receiver<Job>, tx: tokio::sync::mpsc::Sender<ToClient>) {
@@ -394,11 +418,7 @@ async fn gallery_socket(s: Server, socket: WebSocket) {
                         let layout = req
                             .fixture_id
                             .as_ref()
-                            .and_then(|id| {
-                                let (f, _) = db::fixture(&db, id).ok()??;
-                                let d = db::device(&db, &f.device_id).ok()??;
-                                Some(layout::fixture_layout(&d, &f))
-                            })
+                            .and_then(|id| target_layout(&db, id))
                             .unwrap_or_else(grid);
                         Some((req.kind, sources, layout))
                     })();

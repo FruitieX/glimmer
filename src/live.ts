@@ -249,8 +249,32 @@ export function useGallery(
   return gallery;
 }
 
-/** The 10 × 21 grid the server previews on when no light is chosen. */
-export const GRID: [number, number, number][] = Array.from(
-  { length: 210 },
-  (_, i) => [Math.floor(i / 21) / 9, 1 - (i % 21) / 20, 0.5],
-);
+/** LED positions of `cols` strands of `rows` LEDs, hanging from the top. */
+export function gridPoints(cols: number, rows: number) {
+  return Array.from(
+    { length: cols * rows },
+    (_, i) =>
+      [
+        Math.floor(i / rows) / Math.max(1, cols - 1),
+        1 - (i % rows) / Math.max(1, rows - 1),
+        0.5,
+      ] as [number, number, number],
+  );
+}
+
+/** The grid the server previews on when no light is chosen. */
+export const GRID = gridPoints(25, 25);
+
+/** Simulated grids to preview on, as "Preview on" options. */
+export const GRIDS = [10, 25, 50, 100].map((n) => ({
+  value: `grid:${n}x${n}`,
+  label: `A ${n} × ${n} grid`,
+}));
+
+/** The layout of a simulated grid id such as "grid:50x50", or null. */
+export function gridLayout(id: string | undefined) {
+  const m = id?.match(/^grid:(\d+)x(\d+)$/);
+  if (!m) return null;
+  const [cols, rows] = [Number(m[1]), Number(m[2])];
+  return { points: gridPoints(cols, rows), aspect: cols / rows };
+}
