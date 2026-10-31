@@ -1,12 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Crosshair,
+  Merge,
   RefreshCw,
   Scissors,
+  SlidersHorizontal,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { del, post, put, type Device, type DeviceStatus } from "../api";
+import { StringMap } from "../components/StringMap";
+import {
+  LIGHT_COLORS,
+  boundaries,
+  drawPositions,
+  findOutliers,
+  fixOutlier,
+  ledsLabel,
+  mappedPoints,
+  moveBoundary,
+  owners,
+  rangeProblem,
+  type Outlier,
+  type Range,
+} from "../ranges";
 import { useStatus } from "../live";
 import { Link, useApp } from "../main";
 import {
@@ -133,7 +150,7 @@ function DeviceCard({
   status?: DeviceStatus;
   onRemoved: () => void;
 }) {
-  const { state, reload } = useApp();
+  const { reload } = useApp();
   const { run, busy } = useAction();
   const [draft, setDraft] = useState(device);
   useEffect(() => setDraft(device), [device]);
@@ -141,10 +158,8 @@ function DeviceCard({
     () => JSON.stringify(draft) !== JSON.stringify(device),
     [draft, device],
   );
-  const fixtures = state.fixtures.filter(
-    (f) => f.fixture.deviceId === device.id,
-  );
-  const [identifying, setIdentifying] = useState(false);
+  /** First LED to light while finding LEDs, null when not finding. */
+  const [identifying, setIdentifying] = useState<number | null>(null);
   const [splitting, setSplitting] = useState(false);
   const info = device.info;
   const rgbw = device.output.order.length === 4;
@@ -224,21 +239,7 @@ function DeviceCard({
             )
           }
         >
-          <div className="space-y-2">
-            {fixtures.map(({ fixture }) => (
-              <Link
-                key={fixture.id}
-                to={`/lights/${encodeURIComponent(fixture.id)}`}
-                className="flex items-center justify-between gap-3 rounded-xl bg-night px-4 py-3 ring-1 ring-line hover:ring-glow/40"
-              >
-                <span className="font-medium">{fixture.name}</span>
-                <span className="font-mono text-xs text-muted">
-                  LEDs {fixture.start}–{fixture.start + fixture.count - 1}
-                </span>
-              </Link>
-            ))}
-            {device.ledCount > 0 && <LedBar device={device} />}
-          </div>
+          <LightsOnString device={device} onFind={setIdentifying} />
         </Section>
 
         <Section title="Output">
@@ -402,12 +403,6 @@ function DeviceCard({
             <RefreshCw size={14} /> Read LEDs and mapping
           </Button>
           <Button
-            disabled={!device.enabled || device.ledCount === 0}
-            onClick={() => setIdentifying(true)}
-          >
-            <Crosshair size={14} /> Find LEDs
-          </Button>
-          <Button
             variant="danger"
             disabled={busy || !device.enabled}
             onClick={() => {
@@ -444,8 +439,12 @@ function DeviceCard({
           </Button>
         </div>
       </div>
-      {identifying && (
-        <Identify device={device} onClose={() => setIdentifying(false)} />
+      {identifying !== null && (
+        <Identify
+          device={device}
+          initial={identifying}
+          onClose={() => setIdentifying(null)}
+        />
       )}
       {splitting && (
         <Split device={device} onClose={() => setSplitting(false)} />
@@ -454,48 +453,404 @@ function DeviceCard({
   );
 }
 
-/** A bar showing which LED ranges belong to which light. */
-function LedBar({ device }: { device: Device }) {
-  const { state } = useApp();
-  const fixtures = state.fixtures.filter(
-    (f) => f.fixture.deviceId === device.id,
+const colorOf = (i: number) => LIGHT_COLORS[i % LIGHT_COLORS.length];
+
+function Dot({ color, dim }: { color: string; dim?: boolean }) {
+  return (
+    <span
+      className="inline-block size-2.5 shrink-0 rounded-full"
+      style={{
+        background: color,
+        opacity: dim ? 0.25 : 1,
+        boxShadow: dim ? undefined : `0 0 8px ${color}`,
+      }}
+      aria-hidden
+    />
   );
-  const hues = [
-    "#ffb547",
-    "#ff5f8a",
-    "#7cc7ff",
-    "#4ade80",
-    "#c084fc",
-    "#facc15",
-  ];
+}
+
+/** The string's lights as ranges, in LED order. */
+function useRanges(device: Device): Range[] {
+  const { state } = useApp();
+  return useMemo(
+    () =>
+      state.fixtures
+        .filter((f) => f.fixture.deviceId === device.id)
+        .map(({ fixture: f }) => ({
+          id: f.id,
+          name: f.name,
+          start: f.start,
+          count: f.count,
+        }))
+        .sort((a, b) => a.start - b.start || a.name.localeCompare(b.name)),
+    [state.fixtures, device.id],
+  );
+}
+
+/** Mapped positions (null without a mapping) and where to draw each LED. */
+function useStringView(device: Device) {
+  const points = useMemo(
+    () => mappedPoints(device.layout, device.ledCount),
+    [device.layout, device.ledCount],
+  );
+  const view = useMemo(
+    () => drawPositions(points, device.ledCount),
+    [points, device.ledCount],
+  );
+  return { points, ...view };
+}
+
+function OutlierHint({
+  outlier,
+  ranges,
+  onFix,
+}: {
+  outlier: Outlier;
+  ranges: Range[];
+  onFix: () => void;
+}) {
+  const light = ranges[outlier.light];
+  const other =
+    outlier.neighbour !== null ? ranges[outlier.neighbour] : undefined;
+  const one = outlier.leds.length === 1;
   return (
     <div
-      className="relative mt-2 h-2.5 overflow-hidden rounded-full bg-raised"
-      aria-hidden
+      role="note"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-warn/10 px-4 py-3 text-sm text-warn ring-1 ring-warn/25"
     >
-      {fixtures.map(({ fixture }, i) => (
-        <div
-          key={fixture.id}
-          className="absolute inset-y-0 opacity-80"
-          style={{
-            left: `${(fixture.start / device.ledCount) * 100}%`,
-            width: `${(fixture.count / device.ledCount) * 100}%`,
-            background: hues[i % hues.length],
-          }}
+      <p className="flex min-w-48 flex-1 items-start gap-2">
+        <TriangleAlert size={16} className="mt-0.5 shrink-0" />
+        <span>
+          {ledsLabel(outlier.leds)} {one ? "sits" : "sit"} apart from the rest
+          of {light.name}
+          {other
+            ? ` — ${one ? "it" : "they"} may belong to ${other.name}.`
+            : " — the string's mapping may have a stray point."}
+        </span>
+      </p>
+      {other && (
+        <Button size="sm" onClick={onFix}>
+          Move {one ? "it" : "them"} to {other.name}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The string's lights on a map of its LEDs, with the boundaries between them
+ * editable before saving.
+ */
+function LightsOnString({
+  device,
+  onFind,
+}: {
+  device: Device;
+  onFind: (start: number) => void;
+}) {
+  const { reload } = useApp();
+  const { run, busy } = useAction();
+  const saved = useRanges(device);
+  const savedKey = JSON.stringify(saved);
+  const [draft, setDraft] = useState(saved);
+  useEffect(() => setDraft(JSON.parse(savedKey)), [savedKey]);
+  const [exact, setExact] = useState(false);
+  const { points, xy, aspect } = useStringView(device);
+  const n = device.ledCount;
+  const owner = useMemo(() => owners(draft, n), [draft, n]);
+  const outliers = useMemo(
+    () => (points ? findOutliers(points, draft) : []),
+    [points, draft],
+  );
+  const rings = useMemo(
+    () => new Set(outliers.flatMap((o) => o.leds)),
+    [outliers],
+  );
+  const bounds = boundaries(draft);
+  const problem = rangeProblem(draft, n);
+  const changes = draft.filter(
+    (r, i) => r.start !== saved[i]?.start || r.count !== saved[i]?.count,
+  );
+  const changed = changes.length > 0;
+  const unassigned = owner.filter((o) => o < 0).length;
+  const setRange = (i: number, r: Partial<Range>) =>
+    setDraft((d) => d.map((x, j) => (j === i ? { ...x, ...r } : x)));
+
+  const save = async () => {
+    const ok = await run(
+      () =>
+        post(`/devices/${device.id}/lights`, {
+          ranges: changes.map(({ id, start, count }) => ({ id, start, count })),
+        }),
+      "Saved",
+    );
+    if (ok) await reload();
+  };
+  const merge = async (from: Range, into: Range) => {
+    if (
+      !confirm(
+        `Merge ${from.name} into ${into.name}? ${from.name} is removed, along with its homectl device; its LEDs join ${into.name}.`,
+      )
+    )
+      return;
+    const start = Math.min(from.start, into.start);
+    const ok = await run(
+      () =>
+        post(`/devices/${device.id}/lights`, {
+          ranges: [{ id: into.id, start, count: from.count + into.count }],
+          remove: [from.id],
+        }),
+      "Merged",
+    );
+    if (ok) await reload();
+  };
+
+  if (n === 0)
+    return (
+      <div className="space-y-2">
+        {saved.map((r) => (
+          <Link
+            key={r.id}
+            to={`/lights/${encodeURIComponent(r.id)}`}
+            className="flex items-center justify-between gap-3 rounded-xl bg-night px-4 py-3 ring-1 ring-line hover:ring-glow/40"
+          >
+            <span className="font-medium">{r.name}</span>
+          </Link>
+        ))}
+      </div>
+    );
+
+  return (
+    <div className="space-y-4">
+      <StringMap
+        xy={xy}
+        aspect={aspect}
+        owner={owner}
+        colors={draft.map((_, i) => colorOf(i))}
+        names={draft.map((r) => r.name)}
+        rings={rings}
+      />
+      {!points && (
+        <p className="text-xs text-muted">
+          No mapping has been read from the string, so its LEDs are drawn in
+          order, left to right. Map the string in the Twinkly app, then use
+          “Read LEDs and mapping” to see them where they hang.
+        </p>
+      )}
+
+      <ul className="space-y-1.5">
+        {draft.map((r, i) => (
+          <li key={r.id}>
+            <Link
+              to={`/lights/${encodeURIComponent(r.id)}`}
+              className="flex items-center gap-3 rounded-xl bg-night px-4 py-2.5 ring-1 ring-line hover:ring-glow/40"
+            >
+              <Dot color={colorOf(i)} />
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {r.name}
+              </span>
+              <span className="shrink-0 font-mono text-xs text-muted">
+                LEDs {r.start}–{r.start + r.count - 1}
+                <span className="hidden sm:inline"> · {r.count}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+        {unassigned > 0 && (
+          <li className="flex items-center gap-3 px-4 py-1 text-xs text-muted">
+            <Dot color="#ffffff" dim />
+            {unassigned} {unassigned === 1 ? "LED is" : "LEDs are"} not in any
+            light
+          </li>
+        )}
+      </ul>
+
+      {outliers.map((o) => (
+        <OutlierHint
+          key={`${o.light}-${o.leds[0]}`}
+          outlier={o}
+          ranges={draft}
+          onFix={() => setDraft((d) => fixOutlier(d, o))}
         />
       ))}
+
+      {bounds.map((b) => {
+        const lo = draft[b.before];
+        const hi = draft[b.after];
+        const end = hi.start + hi.count;
+        const name = `boundary between ${lo.name} and ${hi.name}`;
+        return (
+          <div
+            key={`${lo.id}|${hi.id}`}
+            className="space-y-2 rounded-xl bg-night px-4 py-3 ring-1 ring-line"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[13px]">
+              <span className="flex min-w-0 items-center gap-1.5 font-medium text-soft">
+                <Dot color={colorOf(b.before)} />
+                <span className="truncate">{lo.name}</span>
+                <span className="text-muted">→</span>
+                <Dot color={colorOf(b.after)} />
+                <span className="truncate">{hi.name}</span>
+              </span>
+              <span className="font-mono text-xs text-muted">
+                ends {b.at - 1} · starts {b.at}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                aria-label={`Move the ${name} one LED down`}
+                disabled={b.at - 1 <= lo.start}
+                onClick={() => setDraft((d) => moveBoundary(d, b, b.at - 1))}
+              >
+                −1
+              </Button>
+              <div className="min-w-0 flex-1">
+                <Slider
+                  label={`The ${name}`}
+                  value={b.at}
+                  min={lo.start + 1}
+                  max={end - 1}
+                  step={1}
+                  onChange={(v) => setDraft((d) => moveBoundary(d, b, v))}
+                />
+              </div>
+              <Button
+                size="sm"
+                aria-label={`Move the ${name} one LED up`}
+                disabled={b.at + 1 >= end}
+                onClick={() => setDraft((d) => moveBoundary(d, b, b.at + 1))}
+              >
+                +1
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+
+      {exact && (
+        <div className="space-y-2">
+          {draft.map((r, i) => {
+            const before = bounds.find((b) => b.after === i);
+            const after = bounds.find((b) => b.before === i);
+            const into = before
+              ? saved[before.before]
+              : after
+                ? saved[after.after]
+                : undefined;
+            return (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-end gap-3 rounded-xl bg-night px-4 py-3 ring-1 ring-line"
+              >
+                <span className="flex w-full items-center gap-2 text-sm font-medium sm:w-40">
+                  <Dot color={colorOf(i)} />
+                  <span className="truncate">{r.name}</span>
+                </span>
+                <label className="w-24 space-y-1">
+                  <span className="text-xs text-muted">First LED</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={n - 1}
+                    value={r.start}
+                    aria-label={`${r.name} first LED`}
+                    onChange={(e) =>
+                      setRange(i, { start: Math.round(Number(e.target.value)) })
+                    }
+                  />
+                </label>
+                <label className="w-24 space-y-1">
+                  <span className="text-xs text-muted">LEDs</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={n}
+                    value={r.count}
+                    aria-label={`${r.name} LED count`}
+                    onChange={(e) =>
+                      setRange(i, { count: Math.round(Number(e.target.value)) })
+                    }
+                  />
+                </label>
+                <span className="pb-2.5 font-mono text-xs text-muted">
+                  to {r.start + r.count - 1}
+                </span>
+                {into && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto"
+                    disabled={busy || changed}
+                    title={changed ? "Save or undo your changes first" : ""}
+                    onClick={() => merge(saved[i], into)}
+                  >
+                    <Merge size={14} /> Merge into {into.name}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {problem && changed && (
+        <p className="flex items-start gap-2 rounded-xl bg-bad/10 px-4 py-3 text-sm text-bad">
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" /> {problem}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {changed && (
+          <>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={busy || !!problem}
+              onClick={save}
+            >
+              Save split
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setDraft(saved)}>
+              Undo
+            </Button>
+          </>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => setExact((v) => !v)}>
+          <SlidersHorizontal size={14} />
+          {exact ? "Hide exact ranges" : "Edit exact ranges"}
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-4">
+        <Button
+          size="sm"
+          disabled={!device.enabled}
+          onClick={() => onFind(outliers[0]?.leds[0] ?? bounds[0]?.at ?? 0)}
+        >
+          <Crosshair size={14} /> Light them up on the string
+        </Button>
+        <span className="min-w-48 flex-1 text-xs text-muted">
+          Optional. The map works without touching the string; this lights
+          chosen LEDs on the real string, interrupting what it shows.
+        </span>
+      </div>
     </div>
   );
 }
 
 function Identify({
   device,
+  initial,
   onClose,
 }: {
   device: Device;
+  initial: number;
   onClose: () => void;
 }) {
-  const [start, setStart] = useState(0);
+  const [start, setStart] = useState(
+    Math.min(Math.max(0, initial), device.ledCount - 1),
+  );
   const [count, setCount] = useState(1);
   useEffect(() => {
     const t = setTimeout(
@@ -516,7 +871,7 @@ function Identify({
       open
       onOpenChange={(v) => !v && onClose()}
       title={`Find LEDs on ${device.name}`}
-      description="The chosen LEDs light up white on the string; the rest glow dim blue. Closing this puts the lights back."
+      description="This lights the real string: the chosen LEDs turn white and the rest glow dim blue, interrupting what it shows. Closing this puts the lights back."
     >
       <div className="space-y-5">
         <Field label={`First LED: ${start}`}>
@@ -529,34 +884,13 @@ function Identify({
             onChange={setStart}
           />
         </Field>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => setStart((s) => Math.max(0, s - 1))}>
-            −1
-          </Button>
-          <Button
-            size="sm"
-            onClick={() =>
-              setStart((s) => Math.min(device.ledCount - 1, s + 1))
-            }
-          >
-            +1
-          </Button>
-          <Input
-            type="number"
-            min={0}
-            max={device.ledCount - 1}
-            value={start}
-            onChange={(e) =>
-              setStart(
-                Math.min(
-                  device.ledCount - 1,
-                  Math.max(0, Number(e.target.value)),
-                ),
-              )
-            }
-            className="w-24"
-          />
-        </div>
+        <LedStepper
+          value={start}
+          min={0}
+          max={device.ledCount - 1}
+          onChange={setStart}
+          label="First LED"
+        />
         <Field label={`How many: ${count}`}>
           <Slider
             label="How many"
@@ -575,15 +909,62 @@ function Identify({
   );
 }
 
+/** −1 / +1 buttons and a number box for picking one LED precisely. */
+function LedStepper({
+  value,
+  min,
+  max,
+  onChange,
+  label,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  label: string;
+}) {
+  const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v)));
+  return (
+    <div className="flex gap-2">
+      <Button
+        size="sm"
+        type="button"
+        aria-label={`${label} one lower`}
+        disabled={value <= min}
+        onClick={() => onChange(clamp(value - 1))}
+      >
+        −1
+      </Button>
+      <Button
+        size="sm"
+        type="button"
+        aria-label={`${label} one higher`}
+        disabled={value >= max}
+        onClick={() => onChange(clamp(value + 1))}
+      >
+        +1
+      </Button>
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        aria-label={label}
+        onChange={(e) => onChange(clamp(Number(e.target.value)))}
+        className="h-8 w-24"
+      />
+    </div>
+  );
+}
+
 function Split({ device, onClose }: { device: Device; onClose: () => void }) {
-  const { state, reload } = useApp();
+  const { reload } = useApp();
   const { run, busy } = useAction();
-  const fixtures = state.fixtures
-    .filter((f) => f.fixture.deviceId === device.id)
-    .map((f) => f.fixture);
-  const last = fixtures.reduce(
-    (a, b) => (b.start + b.count > a.start + a.count ? b : a),
-    fixtures[0],
+  const ranges = useRanges(device);
+  const { points, xy, aspect } = useStringView(device);
+  const last = ranges.reduce<Range | undefined>(
+    (a, b) => (!a || b.start + b.count > a.start + a.count ? b : a),
+    undefined,
   );
   const [at, setAt] = useState(
     last
@@ -591,56 +972,116 @@ function Split({ device, onClose }: { device: Device; onClose: () => void }) {
       : Math.floor(device.ledCount / 2),
   );
   const [name, setName] = useState(`${device.name} 2`);
-  const owner = fixtures.find((f) => at > f.start && at < f.start + f.count);
+  const index = ranges.findIndex((r) => at > r.start && at < r.start + r.count);
+  const owner = ranges[index];
+  const end = owner ? owner.start + owner.count : 0;
+  // The string as it would be split, with the new light last.
+  const preview = useMemo<Range[]>(
+    () =>
+      owner
+        ? [
+            ...ranges.map((r, i) =>
+              i === index ? { ...r, count: at - r.start } : r,
+            ),
+            {
+              id: "",
+              name: name.trim() || "The new light",
+              start: at,
+              count: end - at,
+            },
+          ]
+        : ranges,
+    [ranges, owner, index, at, end, name],
+  );
+  const moving = useMemo(
+    () =>
+      owner
+        ? new Set(Array.from({ length: end - at }, (_, i) => at + i))
+        : null,
+    [owner, at, end],
+  );
+  const outliers = useMemo(
+    () =>
+      points && owner
+        ? findOutliers(points, preview).filter(
+            (o) => o.light === index || o.light === ranges.length,
+          )
+        : [],
+    [points, owner, preview, index, ranges.length],
+  );
   return (
     <Dialog
       open
       onOpenChange={(v) => !v && onClose()}
       title="Split off a part"
       description="The LEDs from the split point to the end of that light become a new light, with its own effects and its own homectl device."
+      wide
     >
       <form
         className="space-y-5"
         onSubmit={async (e) => {
           e.preventDefault();
           if (!owner) return;
-          const ok = await run(async () => {
-            await put(`/fixtures/${encodeURIComponent(owner.id)}`, {
-              ...owner,
-              count: at - owner.start,
-            });
-            await post("/fixtures", {
-              id: name.trim(),
-              deviceId: device.id,
-              start: at,
-              count: owner.start + owner.count - at,
-            });
-          }, "Split");
+          const ok = await run(
+            () =>
+              post(`/devices/${device.id}/lights`, {
+                ranges: [
+                  { id: owner.id, start: owner.start, count: at - owner.start },
+                ],
+                create: { id: name.trim(), start: at, count: end - at },
+              }),
+            "Split",
+          );
           await reload();
           if (ok) onClose();
         }}
       >
-        <Field
-          label={`Split before LED ${at}`}
-          hint={
-            owner ? `Splits ${owner.name}.` : "Pick a point inside a light."
-          }
-        >
-          <Slider
-            label="Split point"
+        <StringMap
+          xy={xy}
+          aspect={aspect}
+          owner={owners(preview, device.ledCount)}
+          colors={preview.map((_, i) => colorOf(i))}
+          names={preview.map((r) => r.name)}
+          focus={moving}
+          rings={new Set(outliers.flatMap((o) => o.leds))}
+        />
+        <div className="space-y-2">
+          <Field
+            label={`The new light starts at LED ${at}`}
+            hint={
+              owner
+                ? `LEDs ${at}–${end - 1} of ${owner.name} (highlighted) become the new light.`
+                : "Pick a point inside a light."
+            }
+          >
+            <Slider
+              label="Split point"
+              value={at}
+              min={1}
+              max={device.ledCount - 1}
+              step={1}
+              onChange={setAt}
+            />
+          </Field>
+          <LedStepper
             value={at}
             min={1}
             max={device.ledCount - 1}
-            step={1}
             onChange={setAt}
+            label="Split point"
           />
-        </Field>
+        </div>
+        {outliers.map((o) => (
+          <OutlierHint
+            key={`${o.light}-${o.leds[0]}`}
+            outlier={o}
+            ranges={preview}
+            onFix={() => setAt(fixOutlier(preview, o)[ranges.length].start)}
+          />
+        ))}
         <Field label="Name of the new light">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <p className="text-xs text-muted">
-          Tip: use “Find LEDs” first to see where one part ends.
-        </p>
         <Button
           variant="primary"
           className="w-full"

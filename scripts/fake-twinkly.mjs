@@ -1,13 +1,41 @@
 // A stand-in for a Twinkly string, for tests: the HTTP API on the given port
-// and realtime UDP frames on 127.0.0.1:7777. Run: node scripts/fake-twinkly.mjs [port] [leds] [rgbw]
+// and realtime UDP frames on 127.0.0.1:7777.
+// Run: node scripts/fake-twinkly.mjs [port] [leds] [rgbw|rgb] [curtain|staircase]
 import http from "node:http";
 import dgram from "node:dgram";
+
+/** Strands hanging side by side, each running top to bottom. */
+function curtain(leds, strands) {
+  const per = Math.ceil(leds / strands);
+  return Array.from({ length: leds }, (_, i) => ({
+    x: -1 + (2 * Math.floor(i / per)) / (strands - 1),
+    y: 1 - (i % per) / (per - 1),
+    z: 0,
+  }));
+}
+
+/**
+ * Two flights of stairs: the first half of the LEDs climbs the lower flight
+ * to the right, then the wire crosses the landing and the second half climbs
+ * the upper flight back to the left.
+ */
+function staircase(leds) {
+  const half = Math.ceil(leds / 2);
+  return Array.from({ length: leds }, (_, i) => {
+    const upper = i >= half;
+    const t = upper ? (i - half) / (leds - half - 1) : i / (half - 1);
+    return upper
+      ? { x: 0.5 - t, y: 0.25 + t * 0.75, z: 0.1 }
+      : { x: -1 + t, y: -1 + t, z: 0 };
+  });
+}
 
 export function startFakeTwinkly({
   port = 8099,
   leds = 210,
   rgbw = true,
   udpPort = 7777,
+  layout = "curtain",
 } = {}) {
   const token = Buffer.from("fakefake").toString("base64");
   const state = {
@@ -19,13 +47,8 @@ export function startFakeTwinkly({
     brightness: 100,
   };
   const bytes = rgbw ? 4 : 3;
-  const strands = 10;
-  const per = Math.ceil(leds / strands);
-  const coordinates = Array.from({ length: leds }, (_, i) => ({
-    x: -1 + (2 * Math.floor(i / per)) / (strands - 1),
-    y: 1 - (i % per) / (per - 1),
-    z: 0,
-  }));
+  const coordinates =
+    layout === "staircase" ? staircase(leds) : curtain(leds, 10);
   const json = (res, body, status = 200) => {
     res.writeHead(status, { "content-type": "application/json" });
     res.end(JSON.stringify({ ...body, code: 1000 }));
@@ -120,11 +143,12 @@ export function startFakeTwinkly({
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const [port, leds, rgbw] = process.argv.slice(2);
+  const [port, leds, rgbw, layout] = process.argv.slice(2);
   const fake = startFakeTwinkly({
     port: Number(port) || 8099,
     leds: Number(leds) || 210,
     rgbw: rgbw !== "rgb",
+    layout,
   });
   setInterval(
     () =>

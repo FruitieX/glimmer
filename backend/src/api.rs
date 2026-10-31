@@ -37,6 +37,7 @@ pub fn routes() -> Router<Server> {
         .route("/api/devices/{id}/refresh", post(refresh_device))
         .route("/api/devices/{id}/identify", post(identify))
         .route("/api/devices/{id}/clear-movies", post(clear_movies))
+        .route("/api/devices/{id}/lights", post(edit_lights))
         .route("/api/fixtures", post(create_fixture))
         .route(
             "/api/fixtures/{id}",
@@ -316,11 +317,7 @@ async fn create_fixture(
 ) -> Result<Json<Fixture>> {
     s.user(&headers)?;
     let id = body.id.trim().to_string();
-    if id.is_empty() || id.contains(['/', '+', '#']) {
-        return Err(ApiError::bad(
-            "Use a name without /, + or #; it is also the light's MQTT id.",
-        ));
-    }
+    valid_light_id(&id)?;
     let fixture = {
         let db = s.app.db()?;
         let device =
@@ -405,6 +402,152 @@ async fn delete_fixture(
     blocking(move || app.sync_device(&fixture.device_id, false)).await?;
     s.app.changed();
     Ok(Json(json!({})))
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct RangeEdit {
+    id: String,
+    start: usize,
+    count: usize,
+}
+
+/// Changes to how a string is split into lights, applied all at once so no
+/// two lights ever share LEDs in between: new ranges for existing lights, an
+/// optional new light (named by its id) and lights to remove (merged away).
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct LightsEdit {
+    ranges: Vec<RangeEdit>,
+    create: Option<RangeEdit>,
+    remove: Vec<String>,
+}
+
+fn valid_light_id(id: &str) -> std::result::Result<(), String> {
+    if id.is_empty() || id.contains(['/', '+', '#']) {
+        return Err("Use a name without /, + or #; it is also the light's MQTT id.".into());
+    }
+    Ok(())
+}
+
+/// The lights to save (changed and new) after `edit`, checked against the
+/// string's other lights. `lights` are the string's current lights.
+fn plan_lights(
+    device: &Device,
+    lights: &[Fixture],
+    edit: &LightsEdit,
+    sort: i64,
+) -> std::result::Result<(Vec<Fixture>, Option<Fixture>), String> {
+    let on_string = |id: &str| {
+        lights
+            .iter()
+            .find(|f| f.id == id)
+            .ok_or_else(|| format!("{id} isn't a light on {}.", device.name))
+    };
+    let mut changed: Vec<Fixture> = vec![];
+    for r in &edit.ranges {
+        if changed.iter().any(|f| f.id == r.id) {
+            return Err(format!("{} is listed twice.", r.id));
+        }
+        let mut f = on_string(&r.id)?.clone();
+        f.start = r.start;
+        f.count = r.count;
+        changed.push(f);
+    }
+    for id in &edit.remove {
+        on_string(id)?;
+        if changed.iter().any(|f| f.id == *id) {
+            return Err(format!("{id} can't be both changed and removed."));
+        }
+    }
+    let created = match &edit.create {
+        Some(r) => {
+            let id = r.id.trim();
+            valid_light_id(id)?;
+            if lights.iter().any(|f| f.id == id) {
+                return Err("A light with that name already exists.".into());
+            }
+            Some(new_fixture(id, device, r.start, r.count, sort))
+        }
+        None => None,
+    };
+    let touched: Vec<&Fixture> = changed.iter().chain(&created).collect();
+    if touched.is_empty() && edit.remove.is_empty() {
+        return Err("Nothing to change.".into());
+    }
+    for f in &touched {
+        check_range(device, f)?;
+    }
+    // Every light that remains, with its new range.
+    let after: Vec<&Fixture> = lights
+        .iter()
+        .filter(|f| !edit.remove.contains(&f.id) && !changed.iter().any(|c| c.id == f.id))
+        .chain(touched.iter().copied())
+        .collect();
+    for a in &touched {
+        for b in &after {
+            if a.id != b.id && a.start < b.start + b.count && b.start < a.start + a.count {
+                let lo = a.start.max(b.start);
+                let hi = (a.start + a.count).min(b.start + b.count);
+                return Err(format!(
+                    "{} and {} would share LEDs {}–{}.",
+                    a.name,
+                    b.name,
+                    lo,
+                    hi - 1
+                ));
+            }
+        }
+    }
+    Ok((changed, created))
+}
+
+async fn edit_lights(
+    State(s): S,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(edit): Json<LightsEdit>,
+) -> Result<Json<Vec<Fixture>>> {
+    s.user(&headers)?;
+    let saved = {
+        let db = s.app.db()?;
+        let device = db::device(&db, &id)?.ok_or_else(|| ApiError::not_found("The string"))?;
+        let all = db::fixtures(&db)?;
+        let lights: Vec<Fixture> = all
+            .iter()
+            .filter(|(f, _)| f.device_id == id)
+            .map(|(f, _)| f.clone())
+            .collect();
+        let (changed, created) = plan_lights(&device, &lights, &edit, all.len() as i64 + 1)?;
+        if let Some(f) = &created
+            && all.iter().any(|(o, _)| o.id == f.id)
+        {
+            return Err(ApiError::bad("A light with that name already exists."));
+        }
+        let tx = db
+            .unchecked_transaction()
+            .map_err(|e| ApiError::bad(e.to_string()))?;
+        for f in &changed {
+            if let Some((_, state)) = all.iter().find(|(o, _)| o.id == f.id) {
+                db::save_fixture(&tx, f, state)?;
+            }
+        }
+        for id in &edit.remove {
+            db::delete_fixture(&tx, id)?;
+        }
+        if let Some(f) = &created {
+            db::save_fixture(&tx, f, &FixtureState::default())?;
+        }
+        tx.commit().map_err(|e| ApiError::bad(e.to_string()))?;
+        if let Some(f) = &created {
+            crate::app::App::skip_running_schedules(&db, &f.id)?;
+        }
+        changed.into_iter().chain(created).collect()
+    };
+    let app = s.app.clone();
+    blocking(move || app.sync_device(&id, false)).await?;
+    s.app.changed();
+    Ok(Json(saved))
 }
 
 async fn set_state(
@@ -996,4 +1139,125 @@ async fn upload_image(
     .await?;
     s.app.changed();
     Ok(Json(info))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn device() -> Device {
+        let mut d = new_device("Stairs", "192.0.2.1", true);
+        d.led_count = 20;
+        d
+    }
+
+    fn lights() -> Vec<Fixture> {
+        vec![
+            new_fixture("Lower", &device(), 0, 9, 1),
+            new_fixture("Upper", &device(), 9, 11, 2),
+        ]
+    }
+
+    fn range(id: &str, start: usize, count: usize) -> RangeEdit {
+        RangeEdit {
+            id: id.into(),
+            start,
+            count,
+        }
+    }
+
+    fn plan(edit: LightsEdit) -> std::result::Result<(Vec<Fixture>, Option<Fixture>), String> {
+        plan_lights(&device(), &lights(), &edit, 3)
+    }
+
+    #[test]
+    fn moves_a_boundary_in_one_step() {
+        let (changed, created) = plan(LightsEdit {
+            ranges: vec![range("Lower", 0, 10), range("Upper", 10, 10)],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            changed
+                .iter()
+                .map(|f| (f.start, f.count))
+                .collect::<Vec<_>>(),
+            [(0, 10), (10, 10)]
+        );
+        assert!(created.is_none());
+        // Growing one light on its own would overlap the other.
+        let err = plan(LightsEdit {
+            ranges: vec![range("Lower", 0, 10)],
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert_eq!(err, "Lower and Upper would share LEDs 9–9.");
+    }
+
+    #[test]
+    fn splits_and_merges() {
+        let (changed, created) = plan(LightsEdit {
+            ranges: vec![range("Upper", 9, 5)],
+            create: Some(range("Top", 14, 6)),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(changed[0].count, 5);
+        let created = created.unwrap();
+        assert_eq!(
+            (created.id.as_str(), created.start, created.count),
+            ("Top", 14, 6)
+        );
+        assert_eq!(created.device_id, device().id);
+
+        let (changed, _) = plan(LightsEdit {
+            ranges: vec![range("Lower", 0, 20)],
+            remove: vec!["Upper".into()],
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(changed[0].count, 20);
+    }
+
+    #[test]
+    fn rejects_bad_edits() {
+        let err = |edit| plan(edit).unwrap_err();
+        assert_eq!(
+            err(LightsEdit {
+                ranges: vec![range("Lower", 0, 0), range("Upper", 0, 20)],
+                ..Default::default()
+            }),
+            "A light needs at least one LED."
+        );
+        assert!(
+            err(LightsEdit {
+                ranges: vec![range("Upper", 9, 12)],
+                ..Default::default()
+            })
+            .contains("don't exist")
+        );
+        assert_eq!(
+            err(LightsEdit {
+                ranges: vec![range("Other", 0, 1)],
+                ..Default::default()
+            }),
+            "Other isn't a light on Stairs."
+        );
+        assert!(
+            err(LightsEdit {
+                create: Some(range("Lower", 0, 1)),
+                ..Default::default()
+            })
+            .contains("already exists")
+        );
+        assert!(
+            err(LightsEdit {
+                ranges: vec![range("Upper", 9, 11)],
+                remove: vec!["Upper".into()],
+                ..Default::default()
+            })
+            .contains("both")
+        );
+        assert_eq!(err(LightsEdit::default()), "Nothing to change.");
+    }
 }

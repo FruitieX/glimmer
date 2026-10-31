@@ -6,7 +6,7 @@ Live animations for [Twinkly](https://twinkly.com/) LED strings, controlled from
 - **Write effects in the browser** with a live preview, version history, and an option to try a draft on a real string. Or describe one and let an AI write it.
 - **Transitions are scripts too.** Each light has its own transition for turning on, turning off, and changing effect: wipes, blooms, dissolves, sparkles.
 - **Playlists** let effects take turns, each for its own time, in order or shuffled. A light plays one like an effect, and the string keeps streaming live (no movie per entry). Built-in seasonal playlists (Halloween, Christmas, Independence Day, New Year, Valentine's, Easter, Vappu, Juhannus and the four seasons) start by themselves on the first day of their window and hand back whatever the light showed before when it ends, unless someone picked something else meanwhile; shorter windows nest inside longer ones. Their schedule, dates, lights and effects can all be changed, and effects can be switched off one by one.
-- **Split one string into several lights.** For example, the two handrails of a staircase curtain become separate lights with their own effects and their own MQTT device.
+- **Split one string into several lights.** For example, the two handrails of a staircase curtain become separate lights with their own effects and their own MQTT device. The string's settings draw every LED where the Twinkly app mapped it, coloured by light, so boundaries can be moved LED by LED without lighting the string, and a light whose first or last LEDs sit apart from the rest gets a hint to move them to its neighbour.
 - **Stored movies.** Effects that loop can be rendered once and uploaded to the string, which then plays them smoothly even on patchy Wi-Fi. Transitions are still streamed live, and the hand-over between the two is seamless.
 - **MQTT** follows the topics of [twinkly-mqtt](https://github.com/FruitieX/twinkly-mqtt), with added presets and multiple colours (see below).
 
@@ -21,7 +21,7 @@ cargo run --manifest-path backend/Cargo.toml  # GLIMMER_DEV_LOGIN=1 for a local 
 npm run dev                                    # UI with hot reload at http://localhost:3110
 ```
 
-`node scripts/fake-twinkly.mjs` simulates a string at `127.0.0.1:8099`; add it in the app under that address. `npm run test:ui` runs the browser checks against it. `cargo run -- probe <ip> [seconds] [fps]` streams a test pattern to a real string and reports timing.
+`node scripts/fake-twinkly.mjs [port] [leds] [rgbw|rgb] [curtain|staircase]` simulates a string at `127.0.0.1:8099`; add it in the app under that address. `npm test` runs the UI's unit tests and `npm run test:ui` the browser checks against the fake. `cargo run -- probe <ip> [seconds] [fps]` streams a test pattern to a real string and reports timing.
 
 ## Configuration
 

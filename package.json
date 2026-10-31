@@ -8,6 +8,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node --test src/*.test.ts",
     "test:ui": "node scripts/verify.mjs",
     "format": "prettier --write src scripts docs README.md package.json vite.config.ts tsconfig.json",
     "format:check": "prettier --check src scripts docs README.md package.json vite.config.ts tsconfig.json"

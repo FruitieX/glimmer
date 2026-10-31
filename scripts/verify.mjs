@@ -300,9 +300,121 @@ try {
   );
   await page.screenshot({ path: `${shots}/effects-phone.png` });
 
+  // Splitting a staircase string into lights: the map shows each light's LEDs
+  // where they hang and points out a split that is one LED off, all without
+  // touching the string. (It stays off, so its UDP port goes unused.)
+  const stairs = startFakeTwinkly({
+    port: 8098,
+    leds: 210,
+    rgbw: false,
+    udpPort: 7778,
+    layout: "staircase",
+  });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(origin);
+    await page.getByRole("button", { name: "Add a string" }).click();
+    await page.getByLabel("Name").fill("Staircase");
+    await page.getByLabel("IP address").fill("127.0.0.1:8098");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByRole("switch", { name: "Staircase power" }).waitFor();
+    await page.getByRole("button", { name: "Staircase settings" }).click();
+    const settings = page.getByRole("dialog", { name: "Staircase settings" });
+    await settings.getByText("210 RGB LEDs").waitFor();
+    await settings.getByRole("button", { name: "Split off a part" }).click();
+    const split = page.getByRole("dialog", { name: "Split off a part" });
+    // The suggested point (LED 105, the middle) is right; one lower leaves
+    // the lower flight's last LED in the new light.
+    await split.getByRole("button", { name: "Split point one lower" }).click();
+    await split.getByLabel("Name of the new light").fill("Staircase upper");
+    await split
+      .getByText("LED 104 sits apart from the rest of Staircase upper")
+      .waitFor();
+    await page.screenshot({ path: `${shots}/split.png` });
+    await split.getByRole("button", { name: "Split", exact: true }).click();
+    await split.waitFor({ state: "detached" });
+
+    const lights = async () =>
+      Object.fromEntries(
+        (await (await page.request.get(`${origin}/api/state`)).json()).fixtures
+          .filter((f) => f.fixture.deviceId === "staircase")
+          .map((f) => [f.fixture.id, [f.fixture.start, f.fixture.count]]),
+      );
+    assert.deepEqual(await lights(), {
+      Staircase: [0, 104],
+      "Staircase upper": [104, 106],
+    });
+    const hint = settings.getByText(
+      "LED 104 sits apart from the rest of Staircase upper — it may belong to Staircase.",
+    );
+    await hint.waitFor();
+    // Tapping an LED names it and its light.
+    const led = settings.locator('[data-led="104"]');
+    await led.scrollIntoViewIfNeeded();
+    const box = await led.boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await settings.getByText("LED 104 · Staircase upper").waitFor();
+    await page.screenshot({ path: `${shots}/split-hint.png` });
+
+    // One tap moves the boundary back (shown before saving).
+    await settings
+      .getByRole("button", { name: "Move it to Staircase", exact: true })
+      .click();
+    await hint.waitFor({ state: "detached" });
+    await settings.getByText("ends 104 · starts 105").waitFor();
+    await settings.getByRole("button", { name: "Save split" }).click();
+    await until(
+      "the boundary at LED 105",
+      async () =>
+        JSON.stringify(await lights()) ===
+        JSON.stringify({ Staircase: [0, 105], "Staircase upper": [105, 105] }),
+    );
+    await settings.getByRole("button", { name: "Save split" }).waitFor({
+      state: "detached",
+    });
+
+    // Single-LED moves preview live and can be undone.
+    await settings
+      .getByRole("button", {
+        name: "Move the boundary between Staircase and Staircase upper one LED up",
+      })
+      .click();
+    await settings
+      .getByText("LED 105 sits apart from the rest of Staircase")
+      .waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await delay(2600); // let the toasts fade
+    await settings
+      .getByText("LED 105 sits apart")
+      .evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await page.screenshot({ path: `${shots}/split-hint-phone.png` });
+    await settings
+      .getByRole("img", { name: /Map of the string/ })
+      .evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await page.screenshot({ path: `${shots}/split-map-phone.png` });
+    await settings.getByRole("button", { name: "Undo", exact: true }).click();
+    await settings.getByRole("button", { name: "Edit exact ranges" }).click();
+    await settings
+      .getByLabel("Staircase upper first LED")
+      .evaluate((e) => e.scrollIntoView({ block: "center" }));
+    await page.screenshot({ path: `${shots}/split-exact-phone.png` });
+    await settings.getByRole("button", { name: "Split off a part" }).click();
+    await split.getByLabel("Name of the new light").waitFor();
+    await delay(2600);
+    await page.screenshot({ path: `${shots}/split-phone.png` });
+    await page.keyboard.press("Escape");
+    assert.deepEqual(await lights(), {
+      Staircase: [0, 105],
+      "Staircase upper": [105, 105],
+    });
+    assert.equal(stairs.state.frames, 0, "nothing streamed to the staircase");
+  } finally {
+    stairs.close();
+  }
+
   assert.deepEqual(errors, [], "no browser errors");
   console.log(
-    "UI checks passed: add string, stream, effects, presets, editor preview, new script, movie upload, playlists, power off.",
+    "UI checks passed: add string, stream, effects, presets, editor preview, new script, movie upload, playlists, power off, splitting a string.",
   );
 } catch (e) {
   failed = true;
