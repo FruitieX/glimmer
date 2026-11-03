@@ -36,7 +36,8 @@ npm run dev                                    # UI with hot reload at http://lo
 | `GLIMMER_OIDC_ISSUER`, `GLIMMER_OIDC_CLIENT_ID`, `GLIMMER_OIDC_CLIENT_SECRET` | OpenID Connect sign-in (e.g. Pocket ID). The callback is `<origin>/auth/callback`.                                                                                                                                                                                                                                                                          |
 | `GLIMMER_OIDC_ALLOWED_GROUPS`                                                 | Comma-separated groups allowed to sign in.                                                                                                                                                                                                                                                                                                                  |
 | `GLIMMER_DEV_LOGIN=1`                                                         | Local development sign-in without a provider.                                                                                                                                                                                                                                                                                                               |
-| `GLIMMER_MQTT_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_PREFIX`             | MQTT broker; prefix defaults to `home/lights/twinkly`.                                                                                                                                                                                                                                                                                                      |
+| `GLIMMER_MQTT_HOST`, `_PORT`, `_USERNAME`, `_PASSWORD`, `_PREFIX`             | MQTT broker; Twinkly topics default to `home/lights/twinkly`.                                                                                                                                                                                                                                                                                               |
+| `GLIMMER_MQTT_LIFX_PREFIX`                                                    | LIFX topics; defaults to `home/lights/lifx` (the parent of the Twinkly prefix plus `/lifx`).                                                                                                                                                                                                                                                                |
 | `GLIMMER_AI_URL`, `GLIMMER_AI_KEY`, `GLIMMER_AI_MODEL`                        | An OpenAI-compatible chat completions endpoint (e.g. a Hermes agent, model `hermes-agent`) for the AI assistant.                                                                                                                                                                                                                                            |
 | `GLIMMER_SEED`                                                                | JSON (or a path to it) with devices to add on start. Only missing devices are added, so the same seed can be kept in the deployment. E.g. `[{"name": "Curtain", "ip": "192.0.2.20"}]` or `[{"name": "Candle", "ip": "192.0.2.21", "kind": "lifx", "fixtures": [{"id": "candle", "name": "Candle", "start": 0, "count": 0}]}]`. Optional `"enabled": false`. |
 | `GLIMMER_TZ`                                                                  | IANA time zone in which seasonal playlists start and end, e.g. `Europe/Helsinki`. Falls back to `TZ`, then UTC.                                                                                                                                                                                                                                             |
@@ -46,7 +47,7 @@ Strings, lights, presets, playlists and effects are all edited in the app.
 
 ## MQTT
 
-Each light publishes its state, retained, on `<prefix>/<light id>`:
+Each light publishes its state, retained, on its device's prefix (`home/lights/twinkly` for Twinkly strings, `home/lights/lifx` for LIFX bulbs) followed by `<light id>`:
 
 ```json
 {
@@ -72,6 +73,7 @@ Commands go to `<prefix>/<light id>/set` and may contain any of these fields:
 - `color`: in any of homectl's forms (`{h,s}`, `{x,y}`, `{r,g,b}`, `{ct}`)
 - `colors`: one per colour slot of the effect
 - `preset`: a preset name, or `Playlist: <name>` to play a playlist (`preset` in the state then names the playlist)
+- `scriptId`: an effect id such as `solid` or `aurora`
 - `transition_ms` or `transition` (in seconds)
 
 The available preset and playlist names are also published on `<prefix>/<light id>/presets`.

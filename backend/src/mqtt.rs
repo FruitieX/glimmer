@@ -64,6 +64,9 @@ struct SetMessage {
     color: Option<Value>,
     colors: Option<Vec<Value>>,
     preset: Option<String>,
+    /// An effect id, as the HTTP API takes it (e.g. `solid`).
+    #[serde(rename = "scriptId")]
+    script_id: Option<String>,
     transition_ms: Option<f32>,
     /// Seconds, as some homectl integrations send it.
     transition: Option<f32>,
@@ -79,6 +82,7 @@ fn patch_from(msg: SetMessage) -> Result<StatePatch, String> {
         power: msg.power,
         brightness: msg.brightness,
         preset: msg.preset.filter(|p| !p.trim().is_empty()),
+        script_id: msg.script_id,
         color: msg
             .color
             .as_ref()
@@ -319,5 +323,7 @@ mod tests {
         let patch = patch_from(msg).unwrap();
         assert_eq!(patch.transition_ms, Some(1500));
         assert_eq!(patch.preset.as_deref(), Some("Aurora"));
+        let msg: SetMessage = serde_json::from_str(r#"{"scriptId":"solid"}"#).unwrap();
+        assert_eq!(patch_from(msg).unwrap().script_id.as_deref(), Some("solid"));
     }
 }
