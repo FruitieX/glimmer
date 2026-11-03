@@ -1846,9 +1846,12 @@ impl Worker {
             return;
         }
         let result = if self.device.led_count == 26 {
-            client.set64(&device::lifx::candle_slots(&zones), 0)
+            client.set64(
+                &device::lifx::candle_slots(&zones),
+                self.device.lifx_blend_ms,
+            )
         } else {
-            client.set_color(zones[0], 0)
+            client.set_color(zones[0], self.device.lifx_blend_ms)
         };
         match result {
             Ok(()) => self.lifx_last = Some(zones),

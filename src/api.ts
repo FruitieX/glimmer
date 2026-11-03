@@ -99,6 +99,8 @@ export interface Device {
   ledCount: number;
   output: Output;
   maxFps: number;
+  /** LIFX only: crossfade each frame into the next over this many ms. */
+  lifxBlendMs: number;
   preferMovies: boolean;
   allowClearingMovies: boolean;
   info: Gestalt | null;

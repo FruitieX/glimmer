@@ -257,6 +257,7 @@ async fn update_device(
         )));
     }
     body.output.order = order;
+    body.lifx_blend_ms = body.lifx_blend_ms.min(1000);
     // Read-only facts come from the device itself.
     body.kind = old.kind;
     body.led_count = old.led_count;

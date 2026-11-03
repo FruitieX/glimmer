@@ -298,6 +298,7 @@ mod tests {
             led_count: 4,
             output: Output::for_bytes_per_led(3),
             max_fps: 25.0,
+            lifx_blend_ms: 100,
             prefer_movies: false,
             allow_clearing_movies: false,
             info: None,

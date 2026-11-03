@@ -268,6 +268,19 @@ export function StringSettings({
                 onChange={(v) => setDraft({ ...draft, maxFps: v })}
               />
             </Field>
+            <Field
+              label={`Frame blending: ${draft.lifxBlendMs} ms`}
+              hint="Crossfades each animation frame into the next, using the bulb's own transition engine. 0 snaps; longer looks smoother but lags a little."
+            >
+              <Slider
+                label="Frame blending"
+                value={draft.lifxBlendMs}
+                min={0}
+                max={300}
+                step={10}
+                onChange={(v) => setDraft({ ...draft, lifxBlendMs: v })}
+              />
+            </Field>
             <p className="mt-3 text-xs text-muted">
               The bulb does its own gamma and white balance. Near-white colours
               go to the CCT LEDs at their temperature; the rest use the colour

@@ -29,6 +29,12 @@ pub struct Device {
     pub output: Output,
     /// Upper bound for the realtime frame rate.
     pub max_fps: f32,
+    /// LIFX only: crossfade each frame into the next over this many
+    /// milliseconds. 0 snaps. The bulb's own transition engine is much
+    /// smoother than its matrix refresh, so a blend makes animations look
+    /// fluid at low visible frame rates.
+    #[serde(default = "default_lifx_blend")]
+    pub lifx_blend_ms: u32,
     /// Prefer uploading loopable looks as movies over streaming them.
     #[serde(default)]
     pub prefer_movies: bool,
@@ -402,6 +408,10 @@ fn one() -> f32 {
     1.0
 }
 
+fn default_lifx_blend() -> u32 {
+    100
+}
+
 fn yes() -> bool {
     true
 }
@@ -512,6 +522,7 @@ mod tests {
         let bulb: Device = serde_json::from_value(v).unwrap();
         assert_eq!(bulb.kind, DeviceKind::Lifx);
         assert_eq!(bulb.lifx.unwrap().product, 57);
+        assert_eq!(bulb.lifx_blend_ms, 100, "frame blending on by default");
     }
 
     #[test]

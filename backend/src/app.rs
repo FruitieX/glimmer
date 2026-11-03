@@ -107,6 +107,7 @@ pub fn new_device(name: &str, ip: &str, enabled: bool, kind: DeviceKind) -> Devi
         led_count: 0,
         output: Output::for_bytes_per_led(3),
         max_fps: 25.0,
+        lifx_blend_ms: 100,
         prefer_movies: false,
         allow_clearing_movies: false,
         info: None,
