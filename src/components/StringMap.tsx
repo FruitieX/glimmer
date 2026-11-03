@@ -13,6 +13,8 @@ interface Props {
   rings?: Set<number>;
   /** When set, only these LEDs are drawn at full strength. */
   focus?: Set<number> | null;
+  /** What one light source is called ("LED" or "zone"). */
+  unit?: string;
   className?: string;
 }
 
@@ -28,6 +30,7 @@ export function StringMap({
   names,
   rings,
   focus,
+  unit = "LED",
   className = "",
 }: Props) {
   const svg = useRef<SVGSVGElement>(null);
@@ -181,7 +184,7 @@ export function StringMap({
           describe(active)
         ) : (
           <span className="font-sans text-muted">
-            Hover or tap an LED to see its number and light.
+            Hover or tap a {unit} to see its number and light.
           </span>
         )}
       </p>

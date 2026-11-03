@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright";
 import { startFakeTwinkly } from "./fake-twinkly.mjs";
 import { startFakeAi } from "./fake-ai.mjs";
+import { startFakeLifx } from "./fake-lifx.mjs";
 
 const port = 3190;
 const origin = `http://127.0.0.1:${port}`;
@@ -20,6 +21,7 @@ mkdirSync(shots, { recursive: true });
 
 const fake = startFakeTwinkly({ port: 8099, leds: 210, rgbw: true });
 const ai = startFakeAi({ port: 8097 });
+const lifx = await startFakeLifx({ port: 56701, quiet: true });
 const server = spawn(bin, [], {
   env: {
     ...process.env,
@@ -97,7 +99,7 @@ try {
   await page.getByText("No lights yet").waitFor();
 
   // Add the fake string.
-  await page.getByRole("button", { name: "Add a string" }).click();
+  await page.getByRole("button", { name: "Add a device" }).click();
   await page.getByLabel("Name").fill("Test curtain");
   await page.getByLabel("IP address").fill("127.0.0.1:8099");
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -902,7 +904,7 @@ try {
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(origin);
-    await page.getByRole("button", { name: "Add a string" }).click();
+    await page.getByRole("button", { name: "Add a device" }).click();
     await page.getByLabel("Name").fill("Staircase");
     await page.getByLabel("IP address").fill("127.0.0.1:8098");
     await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -1026,9 +1028,82 @@ try {
     stairs.close();
   }
 
+  // LIFX: add a Candle, paint its 26 zones with a warm white, then switch it
+  // off. The fake records exactly what the bulb was sent.
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Add a device" }).click();
+  await page.getByLabel("Device type").selectOption("lifx");
+  await page.getByLabel("Name").fill("Candle");
+  await page.getByLabel("IP address").fill("127.0.0.1:56701");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("switch", { name: "Candle power" }).waitFor();
+  const candle = (
+    await (await page.request.get(`${origin}/api/state`)).json()
+  ).devices.find((d) => d.id === "candle");
+  assert.equal(candle.kind, "lifx");
+  assert.equal(candle.ledCount, 26);
+  assert.equal(candle.lifx.product, 57);
+  const candleEntry = async () =>
+    (
+      await (await page.request.get(`${origin}/api/state`)).json()
+    ).fixtures.find((f) => f.fixture.id === "Candle");
+  assert.equal((await candleEntry()).layout.points.length, 26);
+  const setCandle = (data) =>
+    page.request.post(`${origin}/api/fixtures/Candle/state`, {
+      headers: { Origin: origin },
+      data,
+    });
+  assert.ok(
+    (
+      await setCandle({
+        power: true,
+        brightness: 1,
+        scriptId: "solid",
+        color: "#ffd9b0",
+        transition_ms: 0,
+      })
+    ).ok(),
+    "turn the candle on",
+  );
+  const zones = () => [lifx.state.colors[0], ...lifx.state.colors.slice(5, 30)];
+  await until(
+    "the candle to reach full brightness",
+    async () =>
+      lifx.state.frames > 2 &&
+      zones().every(
+        ([, saturation, brightness]) => saturation === 0 && brightness > 60000,
+      ),
+  );
+  assert.ok(
+    zones().every(([, saturation]) => saturation === 0),
+    "every zone uses the white LEDs",
+  );
+  assert.ok(
+    zones().every(([, , brightness]) => brightness > 60000),
+    "every zone is at full brightness",
+  );
+  const kelvins = zones().map((z) => z[3]);
+  const average = kelvins.reduce((a, b) => a + b, 0) / kelvins.length;
+  assert.ok(
+    kelvins.every((k) => Math.abs(k - average) <= 20) &&
+      Math.abs(average - 4249) < 250,
+    `warm white at ~4249 K, got ${kelvins.join(",")}`,
+  );
+  assert.ok((await setCandle({ power: false })).ok(), "turn it off");
+  await until(
+    "the fake LIFX to switch off",
+    async () => lifx.state.power === 0,
+  );
+  // The Twinkly-only output and movie controls stay out of a bulb's settings.
+  await page.goto(`${origin}/lights/Candle/settings`);
+  await page.getByText("LIFX Candle Colour").waitFor();
+  assert.equal(await page.getByText("Stored movies").count(), 0);
+  assert.equal(await page.getByText("White LED share").count(), 0);
+  await page.screenshot({ path: `${shots}/lifx-settings.png`, fullPage: true });
+
   assert.deepEqual(errors, [], "no browser errors");
   console.log(
-    "UI checks passed: add string, light settings page, stream, effects, presets, shared and own shuffled transitions, settings, editor preview, new script, movie upload, playlist pages, AI preset names (with and without pictures), AI looks, AI playlists, power off, splitting a string.",
+    "UI checks passed: add string, light settings page, stream, effects, presets, shared and own shuffled transitions, settings, editor preview, new script, movie upload, playlist pages, AI preset names (with and without pictures), AI looks, AI playlists, power off, splitting a string, LIFX zones.",
   );
 } catch (e) {
   failed = true;
@@ -1038,6 +1113,7 @@ try {
   server.kill();
   fake.close();
   ai.close();
+  lifx.close();
   rmSync(data, { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);

@@ -4,10 +4,23 @@ use crate::{color::Output, device};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// A physical Twinkly string.
+/// What kind of hardware a device is.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DeviceKind {
+    /// A Twinkly string, over HTTP and realtime UDP.
+    #[default]
+    Twinkly,
+    /// A LIFX bulb over the LAN protocol.
+    Lifx,
+}
+
+/// A physical light: a Twinkly string or a LIFX bulb.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
+    #[serde(default)]
+    pub kind: DeviceKind,
     pub id: String,
     pub name: String,
     pub ip: String,
@@ -26,6 +39,9 @@ pub struct Device {
     /// Last device information and mapping read from the string.
     #[serde(default)]
     pub info: Option<device::Gestalt>,
+    /// LIFX vendor, product and firmware, read from the bulb.
+    #[serde(default)]
+    pub lifx: Option<device::lifx::Version>,
     #[serde(default)]
     pub layout: Option<device::Layout>,
 }
@@ -478,6 +494,24 @@ mod tests {
 
     fn spec(id: &str) -> TransitionSpec {
         TransitionSpec::new(id, 1000, Value::Null)
+    }
+
+    #[test]
+    fn devices_default_to_twinkly_and_read_lifx() {
+        let mut v = json!({
+            "id": "lamp", "name": "Lamp", "ip": "192.0.2.30", "enabled": true,
+            "ledCount": 26, "maxFps": 20,
+            "output": {"order": "RGB", "gamma": 2.2, "gains": [1.0, 1.0, 1.0], "white": 1.0}
+        });
+        let old: Device = serde_json::from_value(v.clone()).unwrap();
+        assert_eq!(old.kind, DeviceKind::Twinkly);
+        assert!(old.lifx.is_none());
+
+        v["kind"] = json!("lifx");
+        v["lifx"] = json!({"vendor": 1, "product": 57, "firmware": 0x03030105u32});
+        let bulb: Device = serde_json::from_value(v).unwrap();
+        assert_eq!(bulb.kind, DeviceKind::Lifx);
+        assert_eq!(bulb.lifx.unwrap().product, 57);
     }
 
     #[test]

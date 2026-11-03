@@ -8,7 +8,14 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
-import { del, post, put, type Device, type DeviceStatus } from "../api";
+import {
+  del,
+  post,
+  put,
+  type Device,
+  type DeviceKind,
+  type DeviceStatus,
+} from "../api";
 import { StringMap } from "../components/StringMap";
 import {
   LIGHT_COLORS,
@@ -32,6 +39,7 @@ import {
   Field,
   Input,
   Section,
+  Select,
   Slider,
   Toggle,
   useAction,
@@ -49,20 +57,25 @@ export function AddDevice({
   const { run, busy } = useAction();
   const [name, setName] = useState("");
   const [ip, setIp] = useState("");
+  const [kind, setKind] = useState<DeviceKind>("twinkly");
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Add a string"
-      description="Find the string's IP address in the Twinkly app (device settings). Give it a fixed address in your router."
+      title="Add a device"
+      description={
+        kind === "lifx"
+          ? "Find the bulb's IP address in the LIFX app or your router, and give it a fixed address."
+          : "Find the string's IP address in the Twinkly app (device settings). Give it a fixed address in your router."
+      }
     >
       <form
         className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
           const ok = await run(
-            () => post("/devices", { name, ip }),
-            "String added",
+            () => post("/devices", { name, ip, kind }),
+            "Device added",
           );
           await reload();
           if (ok) {
@@ -72,6 +85,17 @@ export function AddDevice({
           }
         }}
       >
+        <Field label="Type">
+          <Select
+            label="Device type"
+            value={kind}
+            onChange={(v) => setKind(v as DeviceKind)}
+            options={[
+              { value: "twinkly", label: "Twinkly string" },
+              { value: "lifx", label: "LIFX bulb" },
+            ]}
+          />
+        </Field>
         <Field label="Name" hint="Also the light's MQTT id in homectl.">
           <Input
             value={name}
@@ -93,11 +117,16 @@ export function AddDevice({
           className="w-full"
           disabled={busy || !name.trim() || !ip.trim()}
         >
-          {busy ? "Contacting the string…" : "Add"}
+          {busy ? "Contacting the device…" : "Add"}
         </Button>
       </form>
     </Dialog>
   );
+}
+
+function lifxName(product?: number) {
+  if (product === 57 || product === 68) return "Candle Colour";
+  return product ? `product ${product}` : "bulb";
 }
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
@@ -133,7 +162,9 @@ export function StringSettings({
   const [identifying, setIdentifying] = useState<number | null>(null);
   const [splitting, setSplitting] = useState(false);
   const info = device.info;
+  const lifx = device.kind === "lifx";
   const rgbw = device.output.order.length === 4;
+  const zones = device.ledCount;
   const out = draft.output;
   const setOut = (o: Partial<Device["output"]>) =>
     setDraft({ ...draft, output: { ...draft.output, ...o } });
@@ -144,9 +175,14 @@ export function StringSettings({
         <div className="min-w-0 flex-1">
           <p className="text-sm text-muted">
             {device.ip}
-            {info?.product_code && ` · ${info.product_code}`}
-            {device.ledCount > 0 &&
-              ` · ${device.ledCount} ${rgbw ? "RGBW" : "RGB"} LEDs`}
+            {lifx
+              ? device.lifx &&
+                ` · LIFX ${lifxName(device.lifx.product)} · firmware 0x${device.lifx.firmware
+                  .toString(16)
+                  .padStart(8, "0")}`
+              : info?.product_code && ` · ${info.product_code}`}
+            {zones > 0 &&
+              ` · ${zones} ${lifx ? "zones" : `${rgbw ? "RGBW" : "RGB"} LEDs`}`}
           </p>
         </div>
         <Badge
@@ -175,7 +211,7 @@ export function StringSettings({
       <div className="space-y-6 pt-5">
         {!device.enabled && (
           <p className="text-sm text-muted">
-            Disabled strings are left alone: the app never contacts them. Enable
+            Disabled devices are left alone: the app never contacts them. Enable
             it to control its lights.
           </p>
         )}
@@ -190,7 +226,11 @@ export function StringSettings({
               }
             />
             <Stat label="Late frames" value={status.lateFrames} />
-            <Stat label="Movie" value={status.movie ?? "–"} />
+            {lifx ? (
+              <Stat label="Zones" value={zones} />
+            ) : (
+              <Stat label="Movie" value={status.movie ?? "–"} />
+            )}
           </div>
         )}
         {status?.error && device.enabled && (
@@ -201,7 +241,7 @@ export function StringSettings({
         )}
 
         <Section
-          title="Lights on this string"
+          title={lifx ? "Lights on this device" : "Lights on this string"}
           action={
             device.ledCount > 0 && (
               <Button size="sm" onClick={() => setSplitting(true)}>
@@ -213,8 +253,8 @@ export function StringSettings({
           <LightsOnString device={device} onFind={setIdentifying} />
         </Section>
 
-        <Section title="Output">
-          <div className="grid gap-5 sm:grid-cols-2">
+        {lifx ? (
+          <Section title="Output">
             <Field
               label={`Frame rate limit: ${draft.maxFps.toFixed(0)} fps`}
               hint="Lower it if animation looks uneven over Wi-Fi."
@@ -228,120 +268,147 @@ export function StringSettings({
                 onChange={(v) => setDraft({ ...draft, maxFps: v })}
               />
             </Field>
-            <Field
-              label={`Gamma: ${out.gamma.toFixed(2)}`}
-              hint="Higher gives deeper darks and richer colours."
-            >
-              <Slider
-                label="Gamma"
-                value={out.gamma}
-                min={1}
-                max={3.2}
-                step={0.05}
-                onChange={(v) => setOut({ gamma: v })}
-              />
-            </Field>
-            {rgbw && (
+            <p className="mt-3 text-xs text-muted">
+              The bulb does its own gamma and white balance. Near-white colours
+              go to the CCT LEDs at their temperature; the rest use the colour
+              LEDs.
+            </p>
+          </Section>
+        ) : (
+          <Section title="Output">
+            <div className="grid gap-5 sm:grid-cols-2">
               <Field
-                label={`White LED share: ${Math.round(out.white * 100)}%`}
-                hint="How much of pale colours comes from the white LED."
+                label={`Frame rate limit: ${draft.maxFps.toFixed(0)} fps`}
+                hint="Lower it if animation looks uneven over Wi-Fi."
               >
                 <Slider
-                  label="White share"
-                  value={out.white}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  onChange={(v) => setOut({ white: v })}
+                  label="Frame rate limit"
+                  value={draft.maxFps}
+                  min={5}
+                  max={40}
+                  step={1}
+                  onChange={(v) => setDraft({ ...draft, maxFps: v })}
                 />
               </Field>
-            )}
-            <Field
-              label="Channel order"
-              hint={`Byte order the string expects (${rgbw ? "usually WRGB" : "usually RGB"}).`}
-            >
-              <Input
-                value={out.order}
-                onChange={(e) =>
-                  setOut({ order: e.target.value.toUpperCase() })
-                }
-                className="font-mono"
-              />
-            </Field>
-            <div className="space-y-2 sm:col-span-2">
-              <span className="text-[13px] font-medium text-soft">
-                White balance
-              </span>
-              <div className="grid grid-cols-3 gap-4">
-                {(["Red", "Green", "Blue"] as const).map((c, i) => (
-                  <div key={c}>
-                    <div className="flex justify-between text-xs text-muted">
-                      <span>{c}</span>
-                      <span className="font-mono">
-                        {out.gains[i].toFixed(2)}
-                      </span>
+              <Field
+                label={`Gamma: ${out.gamma.toFixed(2)}`}
+                hint="Higher gives deeper darks and richer colours."
+              >
+                <Slider
+                  label="Gamma"
+                  value={out.gamma}
+                  min={1}
+                  max={3.2}
+                  step={0.05}
+                  onChange={(v) => setOut({ gamma: v })}
+                />
+              </Field>
+              {rgbw && (
+                <Field
+                  label={`White LED share: ${Math.round(out.white * 100)}%`}
+                  hint="How much of pale colours comes from the white LED."
+                >
+                  <Slider
+                    label="White share"
+                    value={out.white}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    onChange={(v) => setOut({ white: v })}
+                  />
+                </Field>
+              )}
+              <Field
+                label="Channel order"
+                hint={`Byte order the string expects (${rgbw ? "usually WRGB" : "usually RGB"}).`}
+              >
+                <Input
+                  value={out.order}
+                  onChange={(e) =>
+                    setOut({ order: e.target.value.toUpperCase() })
+                  }
+                  className="font-mono"
+                />
+              </Field>
+              <div className="space-y-2 sm:col-span-2">
+                <span className="text-[13px] font-medium text-soft">
+                  White balance
+                </span>
+                <div className="grid grid-cols-3 gap-4">
+                  {(["Red", "Green", "Blue"] as const).map((c, i) => (
+                    <div key={c}>
+                      <div className="flex justify-between text-xs text-muted">
+                        <span>{c}</span>
+                        <span className="font-mono">
+                          {out.gains[i].toFixed(2)}
+                        </span>
+                      </div>
+                      <Slider
+                        label={`${c} gain`}
+                        value={out.gains[i]}
+                        min={0}
+                        max={1.5}
+                        step={0.01}
+                        onChange={(v) => {
+                          const g = [...out.gains] as [number, number, number];
+                          g[i] = v;
+                          setOut({ gains: g });
+                        }}
+                      />
                     </div>
-                    <Slider
-                      label={`${c} gain`}
-                      value={out.gains[i]}
-                      min={0}
-                      max={1.5}
-                      step={0.01}
-                      onChange={(v) => {
-                        const g = [...out.gains] as [number, number, number];
-                        g[i] = v;
-                        setOut({ gains: g });
-                      }}
-                    />
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </Section>
+          </Section>
+        )}
 
-        <Section title="Stored movies">
-          <div className="space-y-4">
-            <label className="flex items-start justify-between gap-4">
-              <span>
-                <span className="block text-sm font-medium">
-                  Play looping effects from the string's memory
+        {!lifx && (
+          <Section title="Stored movies">
+            <div className="space-y-4">
+              <label className="flex items-start justify-between gap-4">
+                <span>
+                  <span className="block text-sm font-medium">
+                    Play looping effects from the string's memory
+                  </span>
+                  <span className="block text-xs text-muted">
+                    Effects that repeat are rendered once and uploaded as a
+                    movie, so they play perfectly smoothly even if Wi-Fi is
+                    patchy. Transitions are still streamed.
+                  </span>
                 </span>
-                <span className="block text-xs text-muted">
-                  Effects that repeat are rendered once and uploaded as a movie,
-                  so they play perfectly smoothly even if Wi-Fi is patchy.
-                  Transitions are still streamed.
+                <Toggle
+                  label="Prefer movies"
+                  checked={draft.preferMovies}
+                  onChange={(v) => setDraft({ ...draft, preferMovies: v })}
+                />
+              </label>
+              <label className="flex items-start justify-between gap-4">
+                <span>
+                  <span className="block text-sm font-medium">
+                    Allow erasing the string's movie memory when it's full
+                  </span>
+                  <span className="block text-xs text-muted">
+                    The firmware can only erase everything at once, including
+                    effects saved from the Twinkly app.
+                  </span>
                 </span>
-              </span>
-              <Toggle
-                label="Prefer movies"
-                checked={draft.preferMovies}
-                onChange={(v) => setDraft({ ...draft, preferMovies: v })}
-              />
-            </label>
-            <label className="flex items-start justify-between gap-4">
-              <span>
-                <span className="block text-sm font-medium">
-                  Allow erasing the string's movie memory when it's full
-                </span>
-                <span className="block text-xs text-muted">
-                  The firmware can only erase everything at once, including
-                  effects saved from the Twinkly app.
-                </span>
-              </span>
-              <Toggle
-                label="Allow clearing movies"
-                checked={draft.allowClearingMovies}
-                onChange={(v) => setDraft({ ...draft, allowClearingMovies: v })}
-              />
-            </label>
-            {info?.movie_capacity && (
-              <p className="text-xs text-muted">
-                Movie memory: {info.movie_capacity} frames.
-              </p>
-            )}
-          </div>
-        </Section>
+                <Toggle
+                  label="Allow clearing movies"
+                  checked={draft.allowClearingMovies}
+                  onChange={(v) =>
+                    setDraft({ ...draft, allowClearingMovies: v })
+                  }
+                />
+              </label>
+              {info?.movie_capacity && (
+                <p className="text-xs text-muted">
+                  Movie memory: {info.movie_capacity} frames.
+                </p>
+              )}
+            </div>
+          </Section>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <Button
@@ -365,32 +432,35 @@ export function StringSettings({
               if (
                 await run(
                   () => post(`/devices/${device.id}/refresh`),
-                  "Read from the string",
+                  lifx ? "Read from the bulb" : "Read from the string",
                 )
               )
                 reload();
             }}
           >
-            <RefreshCw size={14} /> Read LEDs and mapping
+            <RefreshCw size={14} />{" "}
+            {lifx ? "Read zones" : "Read LEDs and mapping"}
           </Button>
-          <Button
-            variant="danger"
-            disabled={busy || !device.enabled}
-            onClick={() => {
-              if (
-                !confirm(
-                  `Erase every movie stored on ${device.name}, including ones from the Twinkly app?`,
+          {!lifx && (
+            <Button
+              variant="danger"
+              disabled={busy || !device.enabled}
+              onClick={() => {
+                if (
+                  !confirm(
+                    `Erase every movie stored on ${device.name}, including ones from the Twinkly app?`,
+                  )
                 )
-              )
-                return;
-              run(
-                () => post(`/devices/${device.id}/clear-movies`),
-                "Erasing movies",
-              );
-            }}
-          >
-            Erase stored movies
-          </Button>
+                  return;
+                run(
+                  () => post(`/devices/${device.id}/clear-movies`),
+                  "Erasing movies",
+                );
+              }}
+            >
+              Erase stored movies
+            </Button>
+          )}
           <Button
             variant="danger"
             className="ml-auto"
@@ -521,6 +591,7 @@ function LightsOnString({
 }) {
   const { reload } = useApp();
   const { run, busy } = useAction();
+  const lifx = device.kind === "lifx";
   const saved = useRanges(device);
   const savedKey = JSON.stringify(saved);
   const [draft, setDraft] = useState(saved);
@@ -560,7 +631,7 @@ function LightsOnString({
   const merge = async (from: Range, into: Range) => {
     if (
       !confirm(
-        `Merge ${from.name} into ${into.name}? ${from.name} is removed, along with its homectl device; its LEDs join ${into.name}.`,
+        `Merge ${from.name} into ${into.name}? ${from.name} is removed, along with its homectl device; its ${lifx ? "zones" : "LEDs"} join ${into.name}.`,
       )
     )
       return;
@@ -600,6 +671,7 @@ function LightsOnString({
         colors={draft.map((_, i) => colorOf(i))}
         names={draft.map((r) => r.name)}
         rings={rings}
+        unit={lifx ? "zone" : "LED"}
       />
       {!points && (
         <p className="text-xs text-muted">
@@ -632,7 +704,7 @@ function LightsOnString({
                 {r.name}
               </span>
               <span className="shrink-0 font-mono text-xs text-muted">
-                LEDs {r.start}–{r.start + r.count - 1}
+                {lifx ? "Zones" : "LEDs"} {r.start}–{r.start + r.count - 1}
                 <span className="hidden sm:inline"> · {r.count}</span>
               </span>
             </Link>
@@ -641,8 +713,11 @@ function LightsOnString({
         {unassigned > 0 && (
           <li className="flex items-center gap-3 px-4 py-1 text-xs text-muted">
             <Dot color="#ffffff" dim />
-            {unassigned} {unassigned === 1 ? "LED is" : "LEDs are"} not in any
-            light
+            {unassigned}{" "}
+            {unassigned === 1
+              ? `${lifx ? "zone is" : "LED is"}`
+              : `${lifx ? "zones are" : "LEDs are"}`}{" "}
+            not in any light
           </li>
         )}
       </ul>
@@ -730,20 +805,24 @@ function LightsOnString({
                   <span className="truncate">{r.name}</span>
                 </span>
                 <label className="w-24 space-y-1">
-                  <span className="text-xs text-muted">First LED</span>
+                  <span className="text-xs text-muted">
+                    {lifx ? "First zone" : "First LED"}
+                  </span>
                   <Input
                     type="number"
                     min={0}
                     max={n - 1}
                     value={r.start}
-                    aria-label={`${r.name} first LED`}
+                    aria-label={`${r.name} first ${lifx ? "zone" : "LED"}`}
                     onChange={(e) =>
                       setRange(i, { start: Math.round(Number(e.target.value)) })
                     }
                   />
                 </label>
                 <label className="w-24 space-y-1">
-                  <span className="text-xs text-muted">LEDs</span>
+                  <span className="text-xs text-muted">
+                    {lifx ? "Zones" : "LEDs"}
+                  </span>
                   <Input
                     type="number"
                     min={1}
@@ -810,11 +889,14 @@ function LightsOnString({
           disabled={!device.enabled}
           onClick={() => onFind(outliers[0]?.leds[0] ?? bounds[0]?.at ?? 0)}
         >
-          <Crosshair size={14} /> Light them up on the string
+          <Crosshair size={14} /> Light them up on{" "}
+          {lifx ? "the bulb" : "the string"}
         </Button>
         <span className="min-w-48 flex-1 text-xs text-muted">
-          Optional. The map works without touching the string; this lights
-          chosen LEDs on the real string, interrupting what it shows.
+          Optional. The map works without touching{" "}
+          {lifx ? "the bulb" : "the string"}; this lights the chosen{" "}
+          {lifx ? "zones" : "LEDs"} on the real device, interrupting what it
+          shows.
         </span>
       </div>
     </div>
@@ -852,8 +934,8 @@ function Identify({
     <Dialog
       open
       onOpenChange={(v) => !v && onClose()}
-      title={`Find LEDs on ${device.name}`}
-      description="This lights the real string: the chosen LEDs turn white and the rest glow dim blue, interrupting what it shows. Closing this puts the lights back."
+      title={`Find ${device.kind === "lifx" ? "zones" : "LEDs"} on ${device.name}`}
+      description={`This lights the real ${device.kind === "lifx" ? "bulb" : "string"}: the chosen ${device.kind === "lifx" ? "zones" : "LEDs"} turn white and the rest glow dim blue, interrupting what it shows. Closing this puts the lights back.`}
     >
       <div className="space-y-5">
         <Field label={`First LED: ${start}`}>
@@ -996,7 +1078,7 @@ function Split({ device, onClose }: { device: Device; onClose: () => void }) {
       open
       onOpenChange={(v) => !v && onClose()}
       title="Split off a part"
-      description="The LEDs from the split point to the end of that light become a new light, with its own effects and its own homectl device."
+      description={`The ${device.kind === "lifx" ? "zones" : "LEDs"} from the split point to the end of that light become a new light, with its own effects and its own homectl device.`}
       wide
     >
       <form
@@ -1026,13 +1108,14 @@ function Split({ device, onClose }: { device: Device; onClose: () => void }) {
           names={preview.map((r) => r.name)}
           focus={moving}
           rings={new Set(outliers.flatMap((o) => o.leds))}
+          unit={device.kind === "lifx" ? "zone" : "LED"}
         />
         <div className="space-y-2">
           <Field
-            label={`The new light starts at LED ${at}`}
+            label={`The new light starts at ${device.kind === "lifx" ? "zone" : "LED"} ${at}`}
             hint={
               owner
-                ? `LEDs ${at}–${end - 1} of ${owner.name} (highlighted) become the new light.`
+                ? `${device.kind === "lifx" ? "Zones" : "LEDs"} ${at}–${end - 1} of ${owner.name} (highlighted) become the new light.`
                 : "Pick a point inside a light."
             }
           >

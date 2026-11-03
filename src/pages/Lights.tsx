@@ -102,7 +102,7 @@ function LightCard({
             />
           ) : (
             <div className="flex h-44 items-center justify-center text-sm text-muted">
-              Not read from the string yet
+              Not read from the device yet
             </div>
           )}
           <div className="pointer-events-none absolute top-3 left-3">
@@ -175,14 +175,14 @@ export function LightsPage() {
       <div className="mx-auto max-w-md py-20 text-center">
         <h1 className="text-xl font-semibold">No lights yet</h1>
         <p className="mt-2 text-sm text-muted">
-          Add a Twinkly string by its IP address to get started.
+          Add a Twinkly string or LIFX bulb by its IP address to get started.
         </p>
         <Button
           variant="primary"
           className="mt-6"
           onClick={() => setAdding(true)}
         >
-          <Plus size={16} /> Add a string
+          <Plus size={16} /> Add a device
         </Button>
         {add}
       </div>
@@ -194,12 +194,12 @@ export function LightsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Lights</h1>
           <p className="mt-1 text-sm text-muted">
-            What every string is showing right now. The gear on a light opens
+            What every device is showing right now. The gear on a light opens
             its settings.
           </p>
         </div>
         <Button onClick={() => setAdding(true)}>
-          <Plus size={16} /> Add a string
+          <Plus size={16} /> Add a device
         </Button>
       </div>
       {add}

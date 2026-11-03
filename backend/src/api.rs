@@ -168,6 +168,8 @@ async fn follow_all(
 struct NewDevice {
     name: String,
     ip: String,
+    #[serde(default)]
+    kind: crate::model::DeviceKind,
 }
 
 fn valid_ip(ip: &str) -> std::result::Result<(), String> {
@@ -178,7 +180,7 @@ fn valid_ip(ip: &str) -> std::result::Result<(), String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || ".-:".contains(c))
     {
-        return Err("Enter the string's IP address or host name.".into());
+        return Err("Enter the device's IP address or host name.".into());
     }
     Ok(())
 }
@@ -193,11 +195,11 @@ async fn create_device(
     if slug(&body.name).is_empty() {
         return Err(ApiError::bad("Give the string a name."));
     }
-    let device = new_device(&body.name, &body.ip, true);
+    let device = new_device(&body.name, &body.ip, true, body.kind);
     {
         let db = s.app.db()?;
         if db::device(&db, &device.id)?.is_some() {
-            return Err(ApiError::bad("A string with that name already exists."));
+            return Err(ApiError::bad("A device with that name already exists."));
         }
         if db::fixture(&db, &device.name)?.is_some() {
             return Err(ApiError::bad("A light with that name already exists."));
@@ -255,9 +257,11 @@ async fn update_device(
         )));
     }
     body.output.order = order;
-    // Read-only facts come from the string itself.
+    // Read-only facts come from the device itself.
+    body.kind = old.kind;
     body.led_count = old.led_count;
     body.info = old.info;
+    body.lifx = old.lifx;
     body.layout = old.layout;
     db::save_device(&*s.app.db()?, &body)?;
     let app = s.app.clone();
@@ -1392,7 +1396,12 @@ mod tests {
     use super::*;
 
     fn device() -> Device {
-        let mut d = new_device("Stairs", "192.0.2.1", true);
+        let mut d = new_device(
+            "Stairs",
+            "192.0.2.1",
+            true,
+            crate::model::DeviceKind::Twinkly,
+        );
         d.led_count = 20;
         d
     }

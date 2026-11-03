@@ -8,8 +8,8 @@ use crate::{
     device::Client,
     engine::{Command, Engine, Transition},
     model::{
-        Device, Fixture, FixtureState, LayoutMode, Look, Playlist, PlaylistEntry, Preset,
-        Scheduled, ScriptSource, Selection, Settings, Slot, TransitionSpec,
+        Device, DeviceKind, Fixture, FixtureState, LayoutMode, Look, Playlist, PlaylistEntry,
+        Preset, Scheduled, ScriptSource, Selection, Settings, Slot, TransitionSpec,
     },
     playlist::{self, Run},
 };
@@ -71,6 +71,8 @@ pub struct StatePatch {
 /// Initial devices, read once from `GLIMMER_SEED` when the database is empty.
 #[derive(Deserialize)]
 struct SeedDevice {
+    #[serde(default)]
+    kind: DeviceKind,
     name: String,
     ip: String,
     #[serde(default = "yes")]
@@ -93,8 +95,9 @@ fn yes() -> bool {
     true
 }
 
-pub fn new_device(name: &str, ip: &str, enabled: bool) -> Device {
+pub fn new_device(name: &str, ip: &str, enabled: bool, kind: DeviceKind) -> Device {
     Device {
+        kind,
         id: crate::model::slug(name),
         name: name.trim().into(),
         ip: ip.trim().into(),
@@ -105,6 +108,7 @@ pub fn new_device(name: &str, ip: &str, enabled: bool) -> Device {
         prefer_movies: false,
         allow_clearing_movies: false,
         info: None,
+        lifx: None,
         layout: None,
     }
 }
@@ -225,7 +229,7 @@ impl App {
             serde_json::from_str(json).map_err(|e| format!("GLIMMER_SEED: {e}"))?;
         let mut sort = 0;
         for d in seed {
-            let device = new_device(&d.name, &d.ip, d.enabled);
+            let device = new_device(&d.name, &d.ip, d.enabled, d.kind);
             db::save_device(&db, &device)?;
             let fixtures = if d.fixtures.is_empty() {
                 vec![SeedFixture {
@@ -283,7 +287,7 @@ impl App {
             })
             .map_err(|e| e.to_string())?;
         for device in devices {
-            if device.enabled && device.info.is_none() {
+            if device.enabled && device.led_count == 0 {
                 let app = self.clone();
                 let id = device.id.clone();
                 std::thread::spawn(move || {
@@ -340,33 +344,51 @@ impl App {
         Ok(())
     }
 
-    /// Reads LED count, colour profile and mapping from the string.
+    /// Reads the LED count, colour profile and mapping from the device.
     pub fn refresh_device(&self, id: &str) -> Result<Device, String> {
-        let device = db::device(&*self.db()?, id)?.ok_or("no such device")?;
-        let client = Client::new(&device.ip);
-        let gestalt = client.gestalt()?;
-        let layout = client.layout().ok().map(|mut l| {
-            crate::layout::repair_strays(&mut l);
-            l
-        });
-        let mut device = device;
-        let bytes = gestalt.bytes_per_led();
-        if device.output.bytes_per_led() != bytes {
-            device.output = Output::for_bytes_per_led(bytes);
+        let mut device = db::device(&*self.db()?, id)?.ok_or("no such device")?;
+        match device.kind {
+            DeviceKind::Twinkly => {
+                let client = Client::new(&device.ip);
+                let gestalt = client.gestalt()?;
+                let layout = client.layout().ok().map(|mut l| {
+                    crate::layout::repair_strays(&mut l);
+                    l
+                });
+                let bytes = gestalt.bytes_per_led();
+                if device.output.bytes_per_led() != bytes {
+                    device.output = Output::for_bytes_per_led(bytes);
+                }
+                device.led_count = gestalt.number_of_led;
+                if device.info.is_none()
+                    && let Some(fps) = gestalt.frame_rate.filter(|f| *f > 0.0)
+                {
+                    // The reported rate is what the string's own effects use; realtime runs faster.
+                    device.max_fps = if fps < 20.0 {
+                        25.0
+                    } else {
+                        fps.min(30.0) as f32
+                    };
+                }
+                device.info = Some(gestalt);
+                device.layout = layout;
+            }
+            DeviceKind::Lifx => {
+                let mut client = crate::device::lifx::Client::new(&device.ip)?;
+                let version = client.version()?;
+                let zones = crate::device::lifx::zone_count(version.product);
+                if device.lifx.is_none() {
+                    device.max_fps = 20.0;
+                }
+                device.led_count = zones;
+                device.lifx = Some(version);
+                device.info = None;
+                // A Candle's 26 zones have a known shape; single-zone bulbs
+                // fall back to a straight line.
+                device.layout = (zones == 26).then(crate::device::lifx::candle_layout);
+                device.output = Output::for_bytes_per_led(3);
+            }
         }
-        device.led_count = gestalt.number_of_led;
-        if device.info.is_none()
-            && let Some(fps) = gestalt.frame_rate.filter(|f| *f > 0.0)
-        {
-            // The reported rate is what the string's own effects use; realtime runs faster.
-            device.max_fps = if fps < 20.0 {
-                25.0
-            } else {
-                fps.min(30.0) as f32
-            };
-        }
-        device.info = Some(gestalt);
-        device.layout = layout;
         {
             let db = self.db()?;
             db::save_device(&db, &device)?;
@@ -903,7 +925,7 @@ mod tests {
         let db = db::open(&path).unwrap();
         db::sync_builtins(&db).unwrap();
         db::seed_playlists(&db).unwrap();
-        let device = new_device("Curtain", "192.0.2.20", false);
+        let device = new_device("Curtain", "192.0.2.20", false, DeviceKind::Twinkly);
         db::save_device(&db, &device).unwrap();
         db::save_fixture(
             &db,

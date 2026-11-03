@@ -58,6 +58,7 @@ function LightSettings({ fixture }: { fixture: Fixture }) {
   const { navigate } = useRoute();
   const status = useStatus();
   const device = state.devices.find((d) => d.id === fixture.deviceId);
+  const lifx = device?.kind === "lifx";
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-3">
@@ -73,7 +74,7 @@ function LightSettings({ fixture }: { fixture: Fixture }) {
             {fixture.name} settings
           </h1>
           <p className="text-sm text-muted">
-            {device?.name} · LEDs {fixture.start}–
+            {device?.name} · {lifx ? "zones" : "LEDs"} {fixture.start}–
             {fixture.start + fixture.count - 1}
           </p>
         </div>
@@ -81,10 +82,13 @@ function LightSettings({ fixture }: { fixture: Fixture }) {
       <LedSettings fixture={fixture} />
       <LightTransitions fixture={fixture} />
       {device && (
-        <Section title={`String: ${device.name}`}>
+        <Section
+          title={`${device.kind === "lifx" ? "Device" : "String"}: ${device.name}`}
+        >
           <p className="-mt-1 text-sm text-muted">
-            The Twinkly string behind this light: connection, output and how its
-            LEDs are split into lights.
+            {device.kind === "lifx"
+              ? "The LIFX bulb behind this light: connection, zones and how they are split into lights."
+              : "The Twinkly string behind this light: connection, output and how its LEDs are split into lights."}
           </p>
           <Card className="p-5">
             <StringSettings
@@ -104,6 +108,7 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
   const { navigate } = useRoute();
   const { run, busy } = useAction();
   const device = state.devices.find((d) => d.id === fixture.deviceId);
+  const lifx = device?.kind === "lifx";
   const [draft, setDraft] = useState(fixture);
   // Saving transitions changes the fixture too; keep edits made here.
   useEffect(
@@ -132,7 +137,7 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
     (f) => f.fixture.deviceId === fixture.deviceId,
   ).length;
   return (
-    <Section title="LEDs and layout">
+    <Section title={lifx ? "Zones and layout" : "LEDs and layout"}>
       <Card className="space-y-5 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Name">
@@ -147,7 +152,7 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
           >
             <Input value={draft.id} disabled />
           </Field>
-          <Field label="First LED">
+          <Field label={lifx ? "First zone" : "First LED"}>
             <Input
               type="number"
               min={0}
@@ -161,9 +166,11 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
             />
           </Field>
           <Field
-            label="Number of LEDs"
+            label={lifx ? "Number of zones" : "Number of LEDs"}
             hint={
-              device ? `${device.name} has ${device.ledCount} LEDs.` : undefined
+              device
+                ? `${device.name} has ${device.ledCount} ${lifx ? "zones" : "LEDs"}.`
+                : undefined
             }
           >
             <Input
@@ -178,12 +185,20 @@ function LedSettings({ fixture }: { fixture: Fixture }) {
               }
             />
           </Field>
-          <Field label="Positions" hint="Where effects think each LED is.">
+          <Field
+            label="Positions"
+            hint={`Where effects think each ${lifx ? "zone" : "LED"} is.`}
+          >
             <Select
               label="Positions"
               value={mode}
               options={[
-                { value: "device", label: "Mapped in the Twinkly app" },
+                {
+                  value: "device",
+                  label: lifx
+                    ? "The bulb's zones"
+                    : "Mapped in the Twinkly app",
+                },
                 { value: "along", label: "Along its length" },
                 { value: "linear", label: "A straight line" },
                 { value: "grid", label: "Hanging strands" },

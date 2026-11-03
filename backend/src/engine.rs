@@ -8,8 +8,8 @@ use crate::{
     device::{self, Client},
     layout,
     model::{
-        Device, Fixture, FixtureState, Look, ScriptKind, ScriptSource, Slot, TransitionChoice,
-        TransitionSpec, Transitions,
+        Device, DeviceKind, Fixture, FixtureState, Look, ScriptKind, ScriptSource, Slot,
+        TransitionChoice, TransitionSpec, Transitions,
     },
     script::{Rgb, Scripts},
 };
@@ -440,6 +440,139 @@ fn run_control(
     }
 }
 
+/// The LIFX control thread: learn the bulb's serial, keep an eye on it, and
+/// switch it on or off as the fixtures ask. Frames themselves go out from
+/// the render thread.
+fn run_lifx_control(
+    mut device: Device,
+    control: Arc<Control>,
+    status: Arc<RwLock<HashMap<String, DeviceStatus>>>,
+    target: Arc<Mutex<Option<[u8; 8]>>>,
+) {
+    let id = device.id.clone();
+    let set_status = |f: &dyn Fn(&mut DeviceStatus)| {
+        if let Some(s) = status.write().unwrap().get_mut(&id) {
+            f(s);
+        }
+    };
+    let mut client = device::lifx::Client::new(&device.ip).ok();
+    let mut seen = 0u64;
+    let mut applied = Desired::Untouched;
+    check_lifx(&mut client, &target, &status, &id);
+    let mut last_check = Instant::now();
+    loop {
+        let (desired, next_device) = {
+            let guard = control.state.lock().unwrap();
+            let (mut guard, _) = control
+                .wake
+                .wait_timeout_while(guard, Duration::from_secs(2), |s| {
+                    !s.stop && s.generation == seen
+                })
+                .unwrap();
+            if guard.stop {
+                return;
+            }
+            if guard.generation != seen {
+                seen = guard.generation;
+                if matches!(applied, Desired::Off | Desired::Live) {
+                    applied = Desired::Untouched;
+                }
+            }
+            (
+                guard.desired.clone().unwrap_or(Desired::Untouched),
+                guard.device.take(),
+            )
+        };
+        if let Some(next) = next_device {
+            if next.ip != device.ip {
+                client = device::lifx::Client::new(&next.ip).ok();
+                *target.lock().unwrap() = None;
+                applied = Desired::Untouched;
+                check_lifx(&mut client, &target, &status, &id);
+                last_check = Instant::now();
+            }
+            device = next;
+        }
+        if last_check.elapsed() > Duration::from_secs(60) {
+            last_check = Instant::now();
+            check_lifx(&mut client, &target, &status, &id);
+        }
+        let result: Result<(), String> = (|| {
+            let Some(client) = client.as_mut() else {
+                return Err("no LIFX address".into());
+            };
+            match &desired {
+                Desired::Untouched => Ok(()),
+                Desired::Off => {
+                    if applied != Desired::Off {
+                        client.power(false)?;
+                        set_status(&|s| s.mode = Some("off".into()));
+                        applied = Desired::Off;
+                    }
+                    Ok(())
+                }
+                // A LIFX bulb has no stored movies; stream everything.
+                Desired::Live | Desired::Movie { .. } => {
+                    if applied != Desired::Live {
+                        client.power(true)?;
+                        set_status(&|s| s.mode = Some("on".into()));
+                        applied = Desired::Live;
+                    }
+                    Ok(())
+                }
+            }
+        })();
+        if let Err(e) = result {
+            *target.lock().unwrap() = None;
+            applied = Desired::Untouched;
+            set_status(&|s| {
+                s.online = false;
+                s.error = Some(e.clone());
+            });
+            // Look for the bulb again on the next round, not in a minute.
+            last_check = Instant::now() - Duration::from_secs(60);
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    }
+}
+
+fn check_lifx(
+    client: &mut Option<device::lifx::Client>,
+    target: &Arc<Mutex<Option<[u8; 8]>>>,
+    status: &Arc<RwLock<HashMap<String, DeviceStatus>>>,
+    id: &str,
+) {
+    let set = |f: &dyn Fn(&mut DeviceStatus)| {
+        if let Some(s) = status.write().unwrap().get_mut(id) {
+            f(s);
+        }
+    };
+    let Some(client) = client.as_mut() else {
+        *target.lock().unwrap() = None;
+        set(&|s| {
+            s.online = false;
+            s.error = Some("no LIFX address".into());
+        });
+        return;
+    };
+    match client.version() {
+        Ok(_) => {
+            *target.lock().unwrap() = Some(client.target());
+            set(&|s| {
+                s.online = true;
+                s.error = None;
+            });
+        }
+        Err(e) => {
+            *target.lock().unwrap() = None;
+            set(&|s| {
+                s.online = false;
+                s.error = Some(format!("unreachable: {e}"));
+            });
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Render worker.
 
@@ -564,6 +697,11 @@ struct Worker {
     last_change: f64,
     failed_bakes: HashSet<String>,
     sender: Option<device::rt::Sender>,
+    lifx: Option<device::lifx::Client>,
+    lifx_target: Arc<Mutex<Option<[u8; 8]>>>,
+    /// The zones last sent, so a still look doesn't stream at the frame rate.
+    lifx_last: Option<Vec<device::lifx::Hsbk>>,
+    lifx_last_target: [u8; 8],
     frame: Vec<f32>,
     brightness: Vec<f32>,
     bytes: Vec<u8>,
@@ -605,11 +743,20 @@ fn run_worker(
         uploaded: Mutex::new(None),
         movie_failed: Mutex::new(None),
     });
+    let lifx_target = Arc::new(Mutex::new(None));
     let control_thread = {
-        let (device, control, status) = (device.clone(), control.clone(), status.clone());
+        let (device, control, status, lifx_target) = (
+            device.clone(),
+            control.clone(),
+            status.clone(),
+            lifx_target.clone(),
+        );
         thread::Builder::new()
             .name(format!("control-{}", device.id))
-            .spawn(move || run_control(device, control, status))
+            .spawn(move || match device.kind {
+                DeviceKind::Twinkly => run_control(device, control, status),
+                DeviceKind::Lifx => run_lifx_control(device, control, status, lifx_target),
+            })
             .expect("spawning a control thread")
     };
     let scripts = match Scripts::new() {
@@ -619,8 +766,22 @@ fn run_worker(
             return;
         }
     };
+    let lifx = if device.kind == DeviceKind::Lifx {
+        device::lifx::Client::new(&device.ip).ok()
+    } else {
+        None
+    };
+    let sender = if device.kind == DeviceKind::Twinkly {
+        device::rt::Sender::new(&device.ip).ok()
+    } else {
+        None
+    };
     let mut worker = Worker {
-        sender: device::rt::Sender::new(&device.ip).ok(),
+        sender,
+        lifx,
+        lifx_target,
+        lifx_last: None,
+        lifx_last_target: [0; 8],
         device,
         fixtures: vec![],
         scripts,
@@ -691,7 +852,15 @@ impl Worker {
 
     fn configure(&mut self, device: Device, fixtures: Vec<Fixture>) {
         if device.ip != self.device.ip {
-            self.sender = device::rt::Sender::new(&device.ip).ok();
+            self.sender = if device.kind == DeviceKind::Twinkly {
+                device::rt::Sender::new(&device.ip).ok()
+            } else {
+                None
+            };
+            if device.kind == DeviceKind::Lifx {
+                self.lifx = device::lifx::Client::new(&device.ip).ok();
+                *self.lifx_target.lock().unwrap() = None;
+            }
         }
         self.control.update(|s| s.device = Some(device.clone()));
         self.device = device;
@@ -1291,7 +1460,8 @@ impl Worker {
 
     /// Chooses whether the current picture can become a movie.
     fn maybe_bake(&mut self, now: f64) {
-        if !self.device.prefer_movies
+        if self.device.kind != DeviceKind::Twinkly
+            || !self.device.prefer_movies
             || !matches!(self.output, Output::Live)
             || self.identify.is_some()
             || now - self.last_change < 3.0
@@ -1617,6 +1787,13 @@ impl Worker {
     }
 
     fn send_frame(&mut self) {
+        match self.device.kind {
+            DeviceKind::Twinkly => self.send_twinkly(),
+            DeviceKind::Lifx => self.send_lifx(),
+        }
+    }
+
+    fn send_twinkly(&mut self) {
         let token = *self.control.token.lock().unwrap();
         let (Some(token), Some(sender)) = (token, &self.sender) else {
             return;
@@ -1626,6 +1803,59 @@ impl Worker {
             .encode(&self.frame, &self.brightness, &mut self.bytes);
         if let Err(e) = sender.send(&token, &self.bytes) {
             tracing::debug!("{}: sending a frame failed: {e}", self.device.id);
+        }
+    }
+
+    /// One `Set64` for a Candle (26 zones), or one `SetColor` for a bulb
+    /// with a single zone.
+    fn send_lifx(&mut self) {
+        if self.device.led_count == 0 {
+            return;
+        }
+        let Some(target) = *self.lifx_target.lock().unwrap() else {
+            return;
+        };
+        let Some(client) = self.lifx.as_mut() else {
+            return;
+        };
+        client.set_target(target);
+        if target != self.lifx_last_target {
+            self.lifx_last_target = target;
+            self.lifx_last = None;
+        }
+        let white = Some(device::lifx::White::default());
+        let rgb = |i: usize| {
+            [
+                self.frame[i * 3],
+                self.frame[i * 3 + 1],
+                self.frame[i * 3 + 2],
+            ]
+        };
+        let zones: Vec<device::lifx::Hsbk> = if self.device.led_count == 26 {
+            (0..26)
+                .map(|i| device::lifx::Hsbk::from_rgb(rgb(i), self.brightness[i], white))
+                .collect()
+        } else {
+            vec![device::lifx::Hsbk::from_rgb(
+                rgb(0),
+                self.brightness.first().copied().unwrap_or(0.0),
+                white,
+            )]
+        };
+        if self.lifx_last.as_ref() == Some(&zones) {
+            return;
+        }
+        let result = if self.device.led_count == 26 {
+            client.set64(&device::lifx::candle_slots(&zones), 0)
+        } else {
+            client.set_color(zones[0], 0)
+        };
+        match result {
+            Ok(()) => self.lifx_last = Some(zones),
+            Err(e) => {
+                self.lifx_last = None;
+                tracing::debug!("{}: sending a LIFX frame failed: {e}", self.device.id);
+            }
         }
     }
 }

@@ -290,6 +290,7 @@ mod tests {
 
     fn device(layout: Option<device::Layout>) -> Device {
         Device {
+            kind: crate::model::DeviceKind::Twinkly,
             id: "d".into(),
             name: "D".into(),
             ip: "192.0.2.1".into(),
@@ -300,6 +301,7 @@ mod tests {
             prefer_movies: false,
             allow_clearing_movies: false,
             info: None,
+            lifx: None,
             layout,
         }
     }
@@ -318,6 +320,26 @@ mod tests {
             seasonal: true,
             scale: 1.0,
         }
+    }
+
+    #[test]
+    fn candle_zones_keep_their_order() {
+        let mut d = device(None);
+        d.kind = crate::model::DeviceKind::Lifx;
+        d.led_count = 26;
+        d.layout = Some(crate::device::lifx::candle_layout());
+        let all = fixture_layout(&d, &fixture(0, 26, LayoutMode::Device));
+        assert_eq!(all.points.len(), 26);
+        let top = all.points[0];
+        assert!(
+            top[1] > all.points[1..].iter().map(|p| p[1]).fold(0.0, f32::max),
+            "the top cap sits above the body"
+        );
+        // Splitting the cap off gives it one point and the body the rest.
+        let cap = fixture_layout(&d, &fixture(0, 1, LayoutMode::Device));
+        assert_eq!(cap.points.len(), 1);
+        let body = fixture_layout(&d, &fixture(1, 25, LayoutMode::Device));
+        assert_eq!(body.points.len(), 25);
     }
 
     #[test]

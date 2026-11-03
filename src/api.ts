@@ -82,7 +82,16 @@ export interface Gestalt {
   max_movies?: number;
 }
 
+export type DeviceKind = "twinkly" | "lifx";
+
+export interface LifxInfo {
+  vendor: number;
+  product: number;
+  firmware: number;
+}
+
 export interface Device {
+  kind: DeviceKind;
   id: string;
   name: string;
   ip: string;
@@ -93,6 +102,7 @@ export interface Device {
   preferMovies: boolean;
   allowClearingMovies: boolean;
   info: Gestalt | null;
+  lifx: LifxInfo | null;
   layout: {
     source: string;
     coordinates: unknown[];

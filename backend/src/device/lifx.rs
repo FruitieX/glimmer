@@ -8,6 +8,7 @@
 
 use crate::color::{self, Rgb};
 use rand::random;
+use serde::{Deserialize, Serialize};
 use std::{
     io,
     net::{SocketAddr, UdpSocket},
@@ -80,11 +81,46 @@ impl<'a> Message<'a> {
 }
 
 /// A device's firmware and product id.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Version {
     pub vendor: u32,
     pub product: u32,
     pub firmware: u32,
+}
+
+/// The Candle Colour is a 26-zone matrix (5 × 5 around the bulb plus a cap)
+/// rather than a linear strip.
+pub fn is_candle(product: u32) -> bool {
+    matches!(product, 57 | 68)
+}
+
+pub fn zone_count(product: u32) -> usize {
+    if is_candle(product) { 26 } else { 1 }
+}
+
+/// A Candle's zones as coordinates: the top cap first, then five columns of
+/// five zones, bottom to top, in the order `Set64` paints them.
+pub fn candle_layout() -> super::client::Layout {
+    let mut coordinates = vec![super::client::Point {
+        x: 0.5,
+        y: 1.0,
+        z: 0.5,
+    }];
+    for row in 0..5 {
+        for col in 0..5 {
+            coordinates.push(super::client::Point {
+                x: col as f32 / 4.0,
+                y: row as f32 / 4.0 * 0.8,
+                z: 0.5,
+            });
+        }
+    }
+    super::client::Layout {
+        source: "candle".into(),
+        synthesized: true,
+        coordinates,
+        repaired: vec![],
+    }
 }
 
 /// A device's whole-bulb colour and power, as `GetColor` reports them.
@@ -352,6 +388,15 @@ impl Client {
         })
     }
 
+    /// The device serial number learned from its replies.
+    pub fn target(&self) -> [u8; 8] {
+        self.target
+    }
+
+    pub fn set_target(&mut self, target: [u8; 8]) {
+        self.target = target;
+    }
+
     pub fn state(&mut self) -> Result<LightState, String> {
         let p = self.request(GET_COLOR, &[], LIGHT_STATE)?;
         LightState::parse(&p).ok_or_else(|| "short LIFX colour reply".to_string())
@@ -457,6 +502,16 @@ mod tests {
         assert_eq!(slots[5].kelvin, 2000);
         assert_eq!(slots[29].kelvin, 2000);
         assert_eq!(slots[30].brightness, 0);
+    }
+
+    #[test]
+    fn recognizes_the_candle_and_its_shape() {
+        assert_eq!(zone_count(57), 26);
+        assert_eq!(zone_count(68), 26);
+        assert_eq!(zone_count(22), 1);
+        let layout = candle_layout();
+        assert_eq!(layout.coordinates.len(), 26);
+        assert_eq!(layout.coordinates[0].y, 1.0);
     }
 
     #[test]

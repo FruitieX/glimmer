@@ -2,7 +2,7 @@ Use the locked Nix environment (`nix develop --command ...`) for every build, te
 
 Layout: `backend/` is the Rust server (axum, rusqlite, rquickjs, rumqttc); `src/` is the React UI (Vite, Tailwind v4, Radix); `backend/js/` holds the built-in effects and transitions and the QuickJS prelude; `docs/effects.md` is the scripting guide, which is also the AI's system prompt, so keep it accurate when the script API changes.
 
-Architecture: `engine.rs` runs one render thread per enabled string (with its own QuickJS runtime) and one control thread for the slow HTTP calls; frames go out over UDP with protocol v3. `app.rs` holds the state shared by the web API and MQTT. A string that is disabled in the app must never be contacted.
+Architecture: devices are Twinkly strings or LIFX bulbs (`DeviceKind`). `engine.rs` runs one render thread per enabled device (with its own QuickJS runtime) and one control thread for the slow work; Twinkly frames go out over UDP with protocol v3, LIFX frames as `Set64`/`SetColor` over the LAN protocol in `device/lifx.rs`. `app.rs` holds the state shared by the web API and MQTT. A string that is disabled in the app must never be contacted.
 
 Checks before committing: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` (all with `--manifest-path backend/Cargo.toml`), `npm run typecheck`, `npm test`, `npm run format:check`, `npm run build`, then `npm run test:ui`. The last one builds nothing itself: it needs the debug backend binary and `dist/`, and it runs the real server against `scripts/fake-twinkly.mjs`, which listens on UDP 7777. Look at the screenshots in `test-results/` after visual changes, at both desktop and phone width.
 
