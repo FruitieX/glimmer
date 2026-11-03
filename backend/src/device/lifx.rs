@@ -22,8 +22,14 @@ const HEADER: usize = 36;
 
 pub const GET_VERSION: u16 = 32;
 pub const STATE_VERSION: u16 = 33;
-pub const SET64: u16 = 715;
+pub const GET_COLOR: u16 = 101;
+pub const SET_COLOR: u16 = 102;
+pub const LIGHT_STATE: u16 = 107;
 pub const SET_LIGHT_POWER: u16 = 117;
+/// Matrix queries and updates (`Get64`/`State64`/`Set64`).
+pub const GET64: u16 = 707;
+pub const STATE64: u16 = 711;
+pub const SET64: u16 = 715;
 
 /// How close to the blackbody curve a colour must be (in CIE xy) before it
 /// is shown with the white LEDs at the matching temperature rather than
@@ -79,6 +85,31 @@ pub struct Version {
     pub vendor: u32,
     pub product: u32,
     pub firmware: u32,
+}
+
+/// A device's whole-bulb colour and power, as `GetColor` reports them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LightState {
+    pub color: Hsbk,
+    pub power: u16,
+}
+
+impl LightState {
+    fn parse(b: &[u8]) -> Option<Self> {
+        (b.len() >= 12).then(|| Self {
+            color: hsbk_at(b, 0),
+            power: u16::from_le_bytes([b[10], b[11]]),
+        })
+    }
+}
+
+fn hsbk_at(b: &[u8], offset: usize) -> Hsbk {
+    Hsbk {
+        hue: u16::from_le_bytes([b[offset], b[offset + 1]]),
+        saturation: u16::from_le_bytes([b[offset + 2], b[offset + 3]]),
+        brightness: u16::from_le_bytes([b[offset + 4], b[offset + 5]]),
+        kelvin: u16::from_le_bytes([b[offset + 6], b[offset + 7]]),
+    }
 }
 
 /// A zone's colour. LIFX swaps to the white LEDs when `saturation` is zero,
@@ -139,8 +170,8 @@ impl Hsbk {
     }
 }
 
-/// The white range a bulb supports; the Candle Colour covers 1500–9000 K on
-/// current firmware (2500–9000 K on older versions).
+/// The white range a bulb supports. The Candle Colour's earlier firmware
+/// covers 2500–9000 K; 3.50 and later reach down to 1500 K.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct White {
     pub min: u16,
@@ -150,7 +181,7 @@ pub struct White {
 impl Default for White {
     fn default() -> Self {
         Self {
-            min: 1500,
+            min: 2500,
             max: 9000,
         }
     }
@@ -272,8 +303,8 @@ impl Client {
     }
 
     /// Sends a `Get` and waits for the expected state message.
-    fn request(&mut self, kind: u16, expect: u16) -> Result<Vec<u8>, String> {
-        self.send(kind, &[], true)?;
+    fn request(&mut self, kind: u16, payload: &[u8], expect: u16) -> Result<Vec<u8>, String> {
+        self.send(kind, payload, true)?;
         let deadline = Instant::now() + Duration::from_secs(1);
         let mut buf = [0u8; 1024];
         loop {
@@ -310,7 +341,7 @@ impl Client {
     }
 
     pub fn version(&mut self) -> Result<Version, String> {
-        let p = self.request(GET_VERSION, STATE_VERSION)?;
+        let p = self.request(GET_VERSION, &[], STATE_VERSION)?;
         if p.len() < 12 {
             return Err("short LIFX version reply".into());
         }
@@ -319,6 +350,32 @@ impl Client {
             product: u32::from_le_bytes(p[4..8].try_into().unwrap()),
             firmware: u32::from_le_bytes(p[8..12].try_into().unwrap()),
         })
+    }
+
+    pub fn state(&mut self) -> Result<LightState, String> {
+        let p = self.request(GET_COLOR, &[], LIGHT_STATE)?;
+        LightState::parse(&p).ok_or_else(|| "short LIFX colour reply".to_string())
+    }
+
+    /// Restores a whole-bulb colour (and so flattens any pattern).
+    pub fn set_color(&mut self, color: Hsbk, duration_ms: u32) -> Result<(), String> {
+        let mut payload = Vec::with_capacity(12);
+        payload.extend_from_slice(&color.bytes());
+        payload.extend_from_slice(&duration_ms.to_le_bytes());
+        self.send(SET_COLOR, &payload, false)
+    }
+
+    /// The visible frame buffer, as 64 matrix slots.
+    pub fn zones(&mut self) -> Result<[Hsbk; 64], String> {
+        let p = self.request(GET64, &[0, 1, 0, 0, 0, 5], STATE64)?;
+        if p.len() < 5 + 512 {
+            return Err("short LIFX zones reply".into());
+        }
+        let mut zones = [Hsbk::BLACK; 64];
+        for (i, zone) in zones.iter_mut().enumerate() {
+            *zone = hsbk_at(&p, 5 + i * 8);
+        }
+        Ok(zones)
     }
 
     pub fn power(&mut self, on: bool) -> Result<(), String> {
@@ -433,6 +490,27 @@ mod tests {
         // Without a white range everything is RGB.
         let warm_rgb = Hsbk::from_rgb(rgb("#ffd9b0"), 1.0, None);
         assert!(warm_rgb.saturation > 0);
+    }
+
+    #[test]
+    fn reads_colour_and_power() {
+        let color = Hsbk {
+            hue: 1,
+            saturation: 2,
+            brightness: 3,
+            kelvin: 2700,
+        };
+        let mut p = vec![0u8; 52];
+        p[..8].copy_from_slice(&color.bytes());
+        p[10..12].copy_from_slice(&65535u16.to_le_bytes());
+        assert_eq!(
+            LightState::parse(&p),
+            Some(LightState {
+                color,
+                power: 65535
+            })
+        );
+        assert!(LightState::parse(&p[..8]).is_none());
     }
 
     #[test]

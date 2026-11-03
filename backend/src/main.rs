@@ -88,7 +88,8 @@ fn probe(ip: &str, seconds: f64, fps: f64) -> Result<(), String> {
 }
 
 /// `glimmer lifx <ip[:port]> [seconds] [fps]`: paints a warm-to-cool white
-/// gradient with one moving colour band, to check the CCT mapping.
+/// gradient with one moving colour band, to check the CCT mapping. The
+/// bulb's zones and power are put back afterwards.
 fn lifx(addr: &str, seconds: f64, fps: f64) -> Result<(), String> {
     let mut client = device::lifx::Client::new(addr)?;
     let version = client.version()?;
@@ -96,64 +97,127 @@ fn lifx(addr: &str, seconds: f64, fps: f64) -> Result<(), String> {
         "LIFX product {} (vendor {}), firmware {:08x}",
         version.product, version.vendor, version.firmware
     );
-    let white = device::lifx::White::default();
-    client.power(true)?;
-    let start = Instant::now();
-    let period = Duration::from_secs_f64(1.0 / fps);
-    let mut next = start;
-    let mut frames = 0u32;
-    let mut printed = false;
-    while start.elapsed().as_secs_f64() < seconds {
-        let t = start.elapsed().as_secs_f64();
-        let band = ((t * 2.0) as i64).rem_euclid(5) as usize;
-        let mut zones = Vec::with_capacity(26);
-        // The top cap stays candle-warm.
-        zones.push(device::lifx::Hsbk::from_rgb(
-            color::kelvin_to_rgb(1800.0),
-            1.0,
-            Some(white),
-        ));
-        for row in 0..5 {
-            for col in 0..5 {
-                let kelvin = 1800.0 + row as f32 / 4.0 * 5200.0;
-                let rgb = if col == band {
-                    color::hsv_to_rgb(((t * 40.0) % 360.0) as f32 / 360.0, 1.0, 1.0)
-                } else {
-                    color::kelvin_to_rgb(kelvin)
-                };
-                zones.push(device::lifx::Hsbk::from_rgb(rgb, 1.0, Some(white)));
-            }
-        }
-        if !printed {
-            let mut whites = 0;
-            let mut lo = u16::MAX;
-            let mut hi = 0;
-            for zone in &zones {
-                if zone.saturation == 0 {
-                    whites += 1;
-                    lo = lo.min(zone.kelvin);
-                    hi = hi.max(zone.kelvin);
+    let before = client.state()?;
+    let before_zones = client.zones().ok();
+    println!(
+        "before: {}, HSBK {}/{}/{}/{} K",
+        if before.power == 0 { "off" } else { "on" },
+        before.color.hue,
+        before.color.saturation,
+        before.color.brightness,
+        before.color.kelvin
+    );
+    let result = (|| -> Result<(), String> {
+        let white = device::lifx::White::default();
+        client.power(true)?;
+        let start = Instant::now();
+        let period = Duration::from_secs_f64(1.0 / fps);
+        let mut next = start;
+        let mut frames = 0u32;
+        let mut printed = false;
+        while start.elapsed().as_secs_f64() < seconds {
+            let t = start.elapsed().as_secs_f64();
+            let band = ((t * 2.0) as i64).rem_euclid(5) as usize;
+            let mut zones = Vec::with_capacity(26);
+            // The top cap stays candle-warm.
+            zones.push(device::lifx::Hsbk::from_rgb(
+                color::kelvin_to_rgb(1800.0),
+                1.0,
+                Some(white),
+            ));
+            for row in 0..5 {
+                for col in 0..5 {
+                    let kelvin = 1800.0 + row as f32 / 4.0 * 5200.0;
+                    let rgb = if col == band {
+                        color::hsv_to_rgb(((t * 40.0) % 360.0) as f32 / 360.0, 1.0, 1.0)
+                    } else {
+                        color::kelvin_to_rgb(kelvin)
+                    };
+                    zones.push(device::lifx::Hsbk::from_rgb(rgb, 1.0, Some(white)));
                 }
             }
-            println!("{whites}/26 zones on the white LEDs ({lo}-{hi} K), the rest coloured");
-            printed = true;
+            if !printed {
+                println!("frame: {}", describe_zones(&zones));
+                printed = true;
+            }
+            client.set64(&device::lifx::candle_slots(&zones), 0)?;
+            frames += 1;
+            next += period;
+            let now = Instant::now();
+            if now < next {
+                std::thread::sleep(next - now);
+            } else {
+                next = now;
+            }
         }
-        client.set64(&device::lifx::candle_slots(&zones), 0)?;
-        frames += 1;
-        next += period;
-        let now = Instant::now();
-        if now < next {
-            std::thread::sleep(next - now);
+        println!(
+            "sent {frames} frames in {:.2}s ({:.1} fps)",
+            start.elapsed().as_secs_f64(),
+            frames as f64 / start.elapsed().as_secs_f64()
+        );
+        Ok(())
+    })();
+
+    // What the bulb actually stored, before putting its own look back.
+    std::thread::sleep(Duration::from_millis(200));
+    if let Ok(slots) = client.zones() {
+        let zones: Vec<device::lifx::Hsbk> = std::iter::once(slots[0])
+            .chain(slots[5..30].iter().copied())
+            .collect();
+        println!("read back: {}", describe_zones(&zones));
+    }
+    match before_zones {
+        Some(slots) => client.set64(&slots, 0)?,
+        None => client.set_color(before.color, 0)?,
+    }
+    client.power(before.power != 0)?;
+    std::thread::sleep(Duration::from_millis(200));
+    let after = client.state()?;
+    println!(
+        "after: {}, HSBK {}/{}/{}/{} K",
+        if after.power == 0 { "off" } else { "on" },
+        after.color.hue,
+        after.color.saturation,
+        after.color.brightness,
+        after.color.kelvin
+    );
+    println!(
+        "restored{}",
+        if before.power == 0 {
+            " and switched off"
         } else {
-            next = now;
+            ""
+        }
+    );
+    result
+}
+
+/// How many of a bulb's 26 Candle zones use the white LEDs, and over what
+/// temperature range.
+fn describe_zones(zones: &[device::lifx::Hsbk]) -> String {
+    let mut white = 0;
+    let mut colour = 0;
+    let mut black = 0;
+    let mut lo = u16::MAX;
+    let mut hi = 0;
+    for zone in zones {
+        if zone.brightness == 0 {
+            black += 1;
+        } else if zone.saturation == 0 {
+            white += 1;
+            lo = lo.min(zone.kelvin);
+            hi = hi.max(zone.kelvin);
+        } else {
+            colour += 1;
         }
     }
-    println!(
-        "sent {frames} frames in {:.2}s ({:.1} fps)",
-        start.elapsed().as_secs_f64(),
-        frames as f64 / start.elapsed().as_secs_f64()
-    );
-    Ok(())
+    let range = if white == 0 {
+        "no whites".to_string()
+    } else {
+        format!("{lo}-{hi} K")
+    };
+    let n = zones.len();
+    format!("{white}/{n} white ({range}), {colour}/{n} colour, {black}/{n} black")
 }
 
 fn env(name: &str) -> Option<String> {
