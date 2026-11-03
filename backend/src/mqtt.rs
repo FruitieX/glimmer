@@ -7,7 +7,7 @@
 use crate::{
     app::{App, Event, StatePatch},
     color, db,
-    model::{Playlist, Preset},
+    model::{DeviceKind, Playlist, Preset},
     playlist,
 };
 use rumqttc::{AsyncClient, Event as MqttEvent, MqttOptions, Packet, QoS};
@@ -21,7 +21,11 @@ pub struct Config {
     pub port: u16,
     pub username: Option<String>,
     pub password: Option<String>,
+    /// Twinkly fixtures, whose topics homectl already knows.
     pub prefix: String,
+    /// LIFX fixtures, kept on lifx-mqtt's old topics so existing homectl
+    /// devices keep working.
+    pub lifx_prefix: String,
 }
 
 impl Config {
@@ -38,6 +42,16 @@ impl Config {
                 .unwrap_or("home/lights/twinkly".into())
                 .trim_end_matches('/')
                 .to_string(),
+            lifx_prefix: {
+                let prefix = var("GLIMMER_MQTT_LIFX_PREFIX").unwrap_or_else(|| {
+                    let base = var("GLIMMER_MQTT_PREFIX").unwrap_or("home/lights/twinkly".into());
+                    match base.trim_end_matches('/').rsplit_once('/') {
+                        Some((base, _)) => format!("{base}/lifx"),
+                        None => "lifx".into(),
+                    }
+                });
+                prefix.trim_end_matches('/').to_string()
+            },
         })
     }
 }
@@ -117,6 +131,8 @@ fn state_payload(app: &App, id: &str) -> Result<Value, String> {
         "preset": preset,
         "presets": names,
         "effect": state.look.script_id,
+        // lifx-mqtt published this, and homectl uses it to allow HS commands.
+        "capabilities": { "hs": true, "brightness": true },
     }))
 }
 
@@ -129,7 +145,23 @@ fn preset_names(presets: &[Preset], playlists: &[Playlist]) -> Vec<String> {
         .collect()
 }
 
-async fn publish_all(app: &App, client: &AsyncClient, prefix: &str, known: &mut HashSet<String>) {
+/// The MQTT prefix a fixture's device uses.
+fn prefix_for(app: &App, config: &Config, id: &str) -> Option<String> {
+    let db = app.db().ok()?;
+    let (fixture, _) = db::fixture(&db, id).ok()??;
+    let device = db::device(&db, &fixture.device_id).ok()??;
+    Some(match device.kind {
+        DeviceKind::Twinkly => config.prefix.clone(),
+        DeviceKind::Lifx => config.lifx_prefix.clone(),
+    })
+}
+
+async fn publish_all(
+    app: &App,
+    client: &AsyncClient,
+    config: &Config,
+    known: &mut HashSet<(String, String)>,
+) {
     let (fixtures, names) = {
         let Ok(db) = app.db() else { return };
         (
@@ -140,9 +172,15 @@ async fn publish_all(app: &App, client: &AsyncClient, prefix: &str, known: &mut 
             ),
         )
     };
-    let current: HashSet<String> = fixtures.iter().map(|(f, _)| f.id.clone()).collect();
+    let current: HashSet<(String, String)> = fixtures
+        .iter()
+        .filter_map(|(f, _)| Some((prefix_for(app, config, &f.id)?, f.id.clone())))
+        .collect();
     for (f, _) in &fixtures {
-        publish_state(app, client, prefix, &f.id).await;
+        let Some(prefix) = prefix_for(app, config, &f.id) else {
+            continue;
+        };
+        publish_state(app, client, &prefix, &f.id).await;
         let _ = client
             .publish(
                 format!("{prefix}/{}/presets", f.id),
@@ -153,7 +191,7 @@ async fn publish_all(app: &App, client: &AsyncClient, prefix: &str, known: &mut 
             .await;
     }
     // Clear retained state of removed fixtures.
-    for gone in known.difference(&current) {
+    for (prefix, gone) in known.difference(&current) {
         let _ = client
             .publish(format!("{prefix}/{gone}"), QoS::AtLeastOnce, true, "")
             .await;
@@ -193,19 +231,24 @@ pub fn spawn(app: Arc<App>, config: Config) {
     }
     let (client, mut eventloop) = AsyncClient::new(options, 64);
     let prefix = config.prefix.clone();
+    let lifx_prefix = config.lifx_prefix.clone();
+    let event_config = config.clone();
 
     {
         let app = app.clone();
         let client = client.clone();
-        let prefix = prefix.clone();
         tokio::spawn(async move {
             let mut events = app.events.subscribe();
             let mut known = HashSet::new();
             loop {
                 match events.recv().await {
-                    Ok(Event::State(id)) => publish_state(&app, &client, &prefix, &id).await,
+                    Ok(Event::State(id)) => {
+                        if let Some(prefix) = prefix_for(&app, &event_config, &id) {
+                            publish_state(&app, &client, &prefix, &id).await;
+                        }
+                    }
                     Ok(Event::Config) | Err(_) => {
-                        publish_all(&app, &client, &prefix, &mut known).await
+                        publish_all(&app, &client, &event_config, &mut known).await
                     }
                 }
             }
@@ -217,9 +260,11 @@ pub fn spawn(app: Arc<App>, config: Config) {
             match eventloop.poll().await {
                 Ok(MqttEvent::Incoming(Packet::ConnAck(_))) => {
                     tracing::info!("MQTT connected to {}", config.host);
-                    let _ = client
-                        .subscribe(format!("{prefix}/+/set"), QoS::AtLeastOnce)
-                        .await;
+                    for prefix in [&prefix, &lifx_prefix] {
+                        let _ = client
+                            .subscribe(format!("{prefix}/+/set"), QoS::AtLeastOnce)
+                            .await;
+                    }
                     app.changed();
                 }
                 Ok(MqttEvent::Incoming(Packet::Publish(msg))) => {
@@ -228,11 +273,12 @@ pub fn spawn(app: Arc<App>, config: Config) {
                     if msg.retain {
                         continue;
                     }
-                    let Some(id) = msg
-                        .topic
-                        .strip_prefix(&format!("{prefix}/"))
-                        .and_then(|t| t.strip_suffix("/set"))
-                    else {
+                    let id = [&prefix, &lifx_prefix].iter().find_map(|prefix| {
+                        msg.topic
+                            .strip_prefix(&format!("{prefix}/"))
+                            .and_then(|t| t.strip_suffix("/set"))
+                    });
+                    let Some(id) = id else {
                         continue;
                     };
                     let result = serde_json::from_slice::<SetMessage>(&msg.payload)

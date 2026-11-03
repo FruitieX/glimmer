@@ -85,6 +85,8 @@ struct SeedDevice {
 struct SeedFixture {
     id: String,
     #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
     start: usize,
     /// 0: up to the end of the string.
     #[serde(default)]
@@ -219,21 +221,26 @@ impl App {
         Ok(changed)
     }
 
-    /// Imports seed devices into an empty database.
+    /// Adds the devices in `GLIMMER_SEED` that don't exist yet. Existing
+    /// devices and lights are left alone, so the same seed can be applied on
+    /// every start.
     pub fn seed(&self, json: &str) -> Result<(), String> {
         let db = self.db()?;
-        if !db::devices(&db)?.is_empty() {
-            return Ok(());
-        }
+        let existing: std::collections::HashSet<String> =
+            db::devices(&db)?.into_iter().map(|d| d.id).collect();
         let seed: Vec<SeedDevice> =
             serde_json::from_str(json).map_err(|e| format!("GLIMMER_SEED: {e}"))?;
-        let mut sort = 0;
+        let mut sort = db::fixtures(&db)?.len() as i64;
         for d in seed {
             let device = new_device(&d.name, &d.ip, d.enabled, d.kind);
+            if existing.contains(&device.id) {
+                continue;
+            }
             db::save_device(&db, &device)?;
             let fixtures = if d.fixtures.is_empty() {
                 vec![SeedFixture {
                     id: d.name.clone(),
+                    name: None,
                     start: 0,
                     count: 0,
                 }]
@@ -242,7 +249,10 @@ impl App {
             };
             for f in fixtures {
                 sort += 1;
-                let fixture = new_fixture(&f.id, &device, f.start, f.count, sort);
+                let mut fixture = new_fixture(&f.id, &device, f.start, f.count, sort);
+                if let Some(name) = f.name {
+                    fixture.name = name;
+                }
                 db::save_fixture(&db, &fixture, &FixtureState::default())?;
                 Self::skip_running_schedules(&db, &fixture.id)?;
             }
@@ -952,6 +962,28 @@ mod tests {
         .unwrap();
         let app = App::new(db, rusqlite::Connection::open(&path).unwrap(), None);
         (dir, app)
+    }
+
+    #[test]
+    fn seeds_add_missing_devices_and_keep_their_mqtt_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("seed.sqlite3");
+        let conn = db::open(&path).unwrap();
+        db::sync_builtins(&conn).unwrap();
+        db::seed_playlists(&conn).unwrap();
+        let app = App::new(conn, rusqlite::Connection::open(&path).unwrap(), None);
+        let seed = r#"[{
+            "name": "Lantern", "ip": "192.0.2.30", "kind": "lifx",
+            "fixtures": [{"id": "iittala-lantern-1", "name": "Lantern", "start": 0, "count": 0}]
+        }]"#;
+        app.seed(seed).unwrap();
+        app.seed(seed).unwrap();
+        let db = app.db().unwrap();
+        assert_eq!(db::devices(&db).unwrap().len(), 1);
+        let (fixture, _) = db::fixture(&db, "iittala-lantern-1").unwrap().unwrap();
+        assert_eq!(fixture.name, "Lantern");
+        assert_eq!(fixture.device_id, "lantern");
+        assert_eq!(fixture.count, 0, "filled when the bulb is read");
     }
 
     fn set(app: &App, patch: Value) -> Result<FixtureState, String> {
