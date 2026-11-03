@@ -520,7 +520,15 @@ try {
     async () => (await litFraction(page, "main canvas:nth-of-type(2)")) > 0.01,
   );
   await page.screenshot({ path: `${shots}/editor.png`, fullPage: true });
-  // Previews can also run on simulated grids.
+  // Previews can also run on simulated grids, up to 50 × 50.
+  const previewOptions = await page
+    .getByRole("combobox", { name: "Preview on" })
+    .locator("option")
+    .allTextContents();
+  assert.ok(
+    !previewOptions.some((t) => t.includes("100")),
+    "no 100 × 100 preview option",
+  );
   await page
     .getByRole("combobox", { name: "Preview on" })
     .selectOption("grid:50x50");

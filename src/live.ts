@@ -110,13 +110,17 @@ export function usePreview(request: unknown | null) {
   useEffect(() => {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/preview`;
     let closed = false;
-    let socket: WebSocket;
-    let timer: ReturnType<typeof setTimeout>;
+    let socket: WebSocket | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const open = () => {
-      socket = new WebSocket(url);
-      socket.binaryType = "arraybuffer";
-      socket.onopen = () => setWs(socket);
-      socket.onmessage = (e) => {
+      // A hidden tab does not render, so the server has nothing to do.
+      if (closed || document.hidden) return;
+      if (socket && socket.readyState <= WebSocket.OPEN) return;
+      const ws = new WebSocket(url);
+      socket = ws;
+      ws.binaryType = "arraybuffer";
+      ws.onopen = () => setWs(ws);
+      ws.onmessage = (e) => {
         if (e.data instanceof ArrayBuffer) {
           frame.current = new Uint8Array(e.data);
           return;
@@ -129,15 +133,28 @@ export function usePreview(request: unknown | null) {
           setPoints(msg.points);
         }
       };
-      socket.onclose = () => {
-        setWs(null);
-        if (!closed) timer = setTimeout(open, 2000);
+      ws.onclose = () => {
+        if (socket === ws) socket = null;
+        setWs((cur) => (cur === ws ? null : cur));
+        if (!closed && !document.hidden) timer = setTimeout(open, 2000);
       };
     };
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearTimeout(timer);
+        socket?.close();
+        socket = null;
+        setWs(null);
+      } else {
+        open();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     open();
     return () => {
       closed = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
       socket?.close();
     };
   }, [frame]);
@@ -265,8 +282,12 @@ export function gridPoints(cols: number, rows: number) {
 /** The grid the server previews on when no light is chosen. */
 export const GRID = gridPoints(25, 25);
 
-/** Simulated grids to preview on, as "Preview on" options. */
-export const GRIDS = [10, 25, 50, 100].map((n) => ({
+/**
+ * Simulated grids to preview on, as "Preview on" options. Capped at 50 × 50:
+ * the server renders previews in QuickJS at 25 fps, and at 100 × 100 the
+ * heavier effects no longer fit a frame.
+ */
+export const GRIDS = [10, 25, 50].map((n) => ({
   value: `grid:${n}x${n}`,
   label: `A ${n} × ${n} grid`,
 }));

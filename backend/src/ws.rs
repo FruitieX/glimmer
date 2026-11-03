@@ -167,13 +167,26 @@ fn simulated_grid(cols: usize, rows: usize) -> layout::FixtureLayout {
     layout::FixtureLayout::plain(points, cols as f32 / rows as f32)
 }
 
+/// The largest simulated grid the preview renders. At 50 × 50 the heavier
+/// effects still fit the preview's 25 fps; 100 × 100 does not.
+const MAX_GRID: usize = 50;
+
+/// A simulated grid named like `grid:50x50` (at most 50 × 50).
+fn grid_layout(id: &str) -> Option<layout::FixtureLayout> {
+    let size = id.strip_prefix("grid:")?;
+    let (c, r) = size.split_once('x')?;
+    let (c, r): (usize, usize) = (c.parse().ok()?, r.parse().ok()?);
+    ((1..=MAX_GRID).contains(&c) && (1..=MAX_GRID).contains(&r)).then(|| simulated_grid(c, r))
+}
+
 /// Where a preview renders: a light by id, or a simulated grid named like
-/// `grid:50x50` (up to 100 × 100).
+/// `grid:25x25`.
 fn target_layout(db: &rusqlite::Connection, id: &str) -> Option<layout::FixtureLayout> {
-    if let Some(size) = id.strip_prefix("grid:") {
-        let (c, r) = size.split_once('x')?;
-        let (c, r): (usize, usize) = (c.parse().ok()?, r.parse().ok()?);
-        return ((1..=100).contains(&c) && (1..=100).contains(&r)).then(|| simulated_grid(c, r));
+    if let Some(grid) = grid_layout(id) {
+        return Some(grid);
+    }
+    if id.starts_with("grid:") {
+        return None;
     }
     let (f, _) = db::fixture(db, id).ok()??;
     let d = db::device(db, &f.device_id).ok()??;
@@ -540,5 +553,25 @@ fn gallery_thread(rx: mpsc::Receiver<GalleryMsg>, tx: tokio::sync::mpsc::Sender<
         if let Some(rest) = period.checked_sub(started.elapsed()) {
             std::thread::sleep(rest);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preview_grids_stop_at_50() {
+        assert_eq!(grid_layout("grid:25x25").unwrap().points.len(), 625);
+        assert_eq!(grid_layout("grid:50x50").unwrap().points.len(), 2500);
+        assert!(grid_layout("grid:51x50").is_none());
+        assert!(grid_layout("grid:100x100").is_none());
+        assert!(grid_layout("grid:0x10").is_none());
+        assert!(grid_layout("grid:10").is_none());
+        assert!(grid_layout("curtain").is_none());
+        // The API refuses an oversized grid too, not just the UI.
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        assert!(target_layout(&db, "grid:100x100").is_none());
+        assert_eq!(target_layout(&db, "grid:50x50").unwrap().points.len(), 2500);
     }
 }
