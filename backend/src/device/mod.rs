@@ -1,4 +1,5 @@
 pub mod client;
+pub mod lifx;
 pub mod rt;
 
 #[cfg(test)]

@@ -22,7 +22,7 @@ cargo run --manifest-path backend/Cargo.toml  # GLIMMER_DEV_LOGIN=1 for a local 
 npm run dev                                    # UI with hot reload at http://localhost:3110
 ```
 
-`node scripts/fake-twinkly.mjs [port] [leds] [rgbw|rgb] [curtain|staircase]` simulates a string at `127.0.0.1:8099`; add it in the app under that address. `node scripts/fake-ai.mjs [port]` answers the AI prompts with canned replies (`GLIMMER_AI_URL=http://127.0.0.1:8097/v1`). `npm test` runs the UI's unit tests and `npm run test:ui` the browser checks against both fakes. `cargo run -- probe <ip> [seconds] [fps]` streams a test pattern to a real string and reports timing.
+`node scripts/fake-twinkly.mjs [port] [leds] [rgbw|rgb] [curtain|staircase]` simulates a string at `127.0.0.1:8099`; add it in the app under that address. `node scripts/fake-ai.mjs [port]` answers the AI prompts with canned replies (`GLIMMER_AI_URL=http://127.0.0.1:8097/v1`). `node scripts/fake-lifx.mjs [port]` simulates a LIFX Candle Colour, and `cargo run -- lifx 127.0.0.1:56700 [seconds] [fps]` paints a warm-to-cool test gradient on it. `npm test` runs the UI's unit tests and `npm run test:ui` the browser checks against both fakes. `cargo run -- probe <ip> [seconds] [fps]` streams a test pattern to a real string and reports timing.
 
 ## Configuration
 

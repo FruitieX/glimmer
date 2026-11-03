@@ -87,6 +87,75 @@ fn probe(ip: &str, seconds: f64, fps: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// `glimmer lifx <ip[:port]> [seconds] [fps]`: paints a warm-to-cool white
+/// gradient with one moving colour band, to check the CCT mapping.
+fn lifx(addr: &str, seconds: f64, fps: f64) -> Result<(), String> {
+    let mut client = device::lifx::Client::new(addr)?;
+    let version = client.version()?;
+    println!(
+        "LIFX product {} (vendor {}), firmware {:08x}",
+        version.product, version.vendor, version.firmware
+    );
+    let white = device::lifx::White::default();
+    client.power(true)?;
+    let start = Instant::now();
+    let period = Duration::from_secs_f64(1.0 / fps);
+    let mut next = start;
+    let mut frames = 0u32;
+    let mut printed = false;
+    while start.elapsed().as_secs_f64() < seconds {
+        let t = start.elapsed().as_secs_f64();
+        let band = ((t * 2.0) as i64).rem_euclid(5) as usize;
+        let mut zones = Vec::with_capacity(26);
+        // The top cap stays candle-warm.
+        zones.push(device::lifx::Hsbk::from_rgb(
+            color::kelvin_to_rgb(1800.0),
+            1.0,
+            Some(white),
+        ));
+        for row in 0..5 {
+            for col in 0..5 {
+                let kelvin = 1800.0 + row as f32 / 4.0 * 5200.0;
+                let rgb = if col == band {
+                    color::hsv_to_rgb(((t * 40.0) % 360.0) as f32 / 360.0, 1.0, 1.0)
+                } else {
+                    color::kelvin_to_rgb(kelvin)
+                };
+                zones.push(device::lifx::Hsbk::from_rgb(rgb, 1.0, Some(white)));
+            }
+        }
+        if !printed {
+            let mut whites = 0;
+            let mut lo = u16::MAX;
+            let mut hi = 0;
+            for zone in &zones {
+                if zone.saturation == 0 {
+                    whites += 1;
+                    lo = lo.min(zone.kelvin);
+                    hi = hi.max(zone.kelvin);
+                }
+            }
+            println!("{whites}/26 zones on the white LEDs ({lo}-{hi} K), the rest coloured");
+            printed = true;
+        }
+        client.set64(&device::lifx::candle_slots(&zones), 0)?;
+        frames += 1;
+        next += period;
+        let now = Instant::now();
+        if now < next {
+            std::thread::sleep(next - now);
+        } else {
+            next = now;
+        }
+    }
+    println!(
+        "sent {frames} frames in {:.2}s ({:.1} fps)",
+        start.elapsed().as_secs_f64(),
+        frames as f64 / start.elapsed().as_secs_f64()
+    );
+    Ok(())
+}
+
 fn env(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -131,6 +200,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let seconds = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10.0);
         let fps = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(25.0);
         probe(ip, seconds, fps)?;
+        return Ok(());
+    }
+    if args.get(1).map(String::as_str) == Some("lifx") {
+        let addr = args
+            .get(2)
+            .ok_or("usage: glimmer lifx <ip[:port]> [seconds] [fps]")?;
+        let seconds = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10.0);
+        let fps = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(20.0);
+        lifx(addr, seconds, fps)?;
         return Ok(());
     }
 
