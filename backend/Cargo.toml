@@ -12,7 +12,7 @@ chrono = { version = "=0.4.45", default-features = false, features = ["std", "no
 chrono-tz = "=0.10.4"
 futures-util = "=0.3.34"
 image = { version = "=0.25.10", default-features = false, features = ["gif", "png", "jpeg"] }
-rand = "=0.10.3"
+rand = "=0.10.4"
 rquickjs = "=0.14.0"
 rumqttc = { version = "=0.25.1", default-features = false }
 rusqlite = { version = "=0.42.0", features = ["bundled", "backup"] }
