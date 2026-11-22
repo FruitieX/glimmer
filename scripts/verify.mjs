@@ -891,6 +891,38 @@ try {
   );
   await page.screenshot({ path: `${shots}/effects-phone.png` });
 
+  // A hidden tab drops its frame streams and picks them up when shown again
+  // (this page has two galleries: effects and transitions).
+  const sockets = [];
+  page.on("websocket", (ws) => sockets.push(ws));
+  const open = (path) =>
+    sockets.filter((ws) => ws.url().endsWith(path) && !ws.isClosed()).length;
+  const setHidden = (hidden) =>
+    page.evaluate((hidden) => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => hidden,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, hidden);
+  await page.reload();
+  await until(
+    "streams open",
+    () => open("/api/live") === 1 && open("/api/gallery") === 2,
+  );
+  await setHidden(true);
+  await until(
+    "hidden tab streams closed",
+    () => !open("/api/live") && !open("/api/gallery"),
+  );
+  await delay(2500);
+  assert.equal(open("/api/live") + open("/api/gallery"), 0, "stay closed");
+  await setHidden(false);
+  await until(
+    "shown tab streams reopened",
+    () => open("/api/live") === 1 && open("/api/gallery") === 2,
+  );
+
   // Splitting a staircase string into lights: the map shows each light's LEDs
   // where they hang and points out a split that is one LED off, all without
   // touching the string. (It stays off, so its UDP port goes unused.)

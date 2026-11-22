@@ -17,8 +17,12 @@ function notify(set: Set<Listener>) {
 
 let socket: WebSocket | null = null;
 let retry = 1000;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
 function connect() {
+  // A hidden tab draws nothing, so it doesn't take the stream of every
+  // light's frames; it reconnects (and refetches) when shown again.
+  if (socket || document.hidden) return;
   const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/live`;
   const ws = new WebSocket(url);
   ws.binaryType = "arraybuffer";
@@ -51,16 +55,36 @@ function connect() {
     }
   };
   ws.onclose = () => {
+    // A socket closed on hiding the tab may finish closing after its
+    // replacement opened.
+    if (socket && socket !== ws) return;
+    socket = null;
+    // Closed for a hidden tab: no "Reconnecting…" flash when it's shown.
+    if (document.hidden) return;
     connected = false;
     notify(connectionListeners);
-    socket = null;
-    setTimeout(connect, retry);
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(connect, retry);
     retry = Math.min(retry * 2, 15000);
   };
 }
 
+let started = false;
+
 export function startLive() {
-  if (!socket) connect();
+  if (started) return;
+  started = true;
+  document.addEventListener("visibilitychange", () => {
+    clearTimeout(retryTimer);
+    if (document.hidden) {
+      socket?.close();
+      socket = null;
+    } else {
+      retry = 1000;
+      connect();
+    }
+  });
+  connect();
 }
 
 export function useStatus(): Record<string, DeviceStatus> {
@@ -227,21 +251,25 @@ export function useGallery(
   useEffect(() => {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/gallery`;
     let closed = false;
-    let socket: WebSocket;
-    let timer: ReturnType<typeof setTimeout>;
+    let socket: WebSocket | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const g = gallery as Gallery & {
       attach(ws: WebSocket | null): void;
       sendVisible(): void;
     };
     const open = () => {
-      socket = new WebSocket(url);
-      socket.binaryType = "arraybuffer";
-      socket.onopen = () => {
-        g.attach(socket);
+      // Thumbnails are rendered on the server; a hidden tab doesn't need them.
+      if (closed || document.hidden) return;
+      if (socket && socket.readyState <= WebSocket.OPEN) return;
+      const ws = new WebSocket(url);
+      socket = ws;
+      ws.binaryType = "arraybuffer";
+      ws.onopen = () => {
+        g.attach(ws);
         g.sendVisible();
-        socket.send(JSON.stringify({ kind, fixtureId }));
+        ws.send(JSON.stringify({ kind, fixtureId }));
       };
-      socket.onmessage = (e) => {
+      ws.onmessage = (e) => {
         if (!(e.data instanceof ArrayBuffer)) return;
         const bytes = new Uint8Array(e.data);
         const len = bytes[0];
@@ -250,15 +278,27 @@ export function useGallery(
           bytes.subarray(1 + len),
         );
       };
-      socket.onclose = () => {
+      ws.onclose = () => {
+        if (socket !== ws) return;
         g.attach(null);
-        if (!closed) timer = setTimeout(open, 3000);
+        if (!closed && !document.hidden) timer = setTimeout(open, 3000);
       };
     };
+    const onVisibility = () => {
+      clearTimeout(timer);
+      if (document.hidden) {
+        g.attach(null);
+        socket?.close();
+      } else {
+        open();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     open();
     return () => {
       closed = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
       g.attach(null);
       socket?.close();
     };
