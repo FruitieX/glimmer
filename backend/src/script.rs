@@ -797,6 +797,45 @@ mod tests {
     }
 
     #[test]
+    fn samplers_are_shared_and_find_the_nearest_led_far_from_all() {
+        // A dense corner and a few lone LEDs: most of the area is far from any.
+        let mut points: Vec<[f32; 3]> = (0..36)
+            .map(|i| [(i % 6) as f32 * 0.05, (i / 6) as f32 * 0.05, 0.0])
+            .collect();
+        points.extend([[0.9, 0.9, 0.0], [0.95, 0.2, 0.0], [0.5, 0.95, 0.0]]);
+        let s = Scripts::new().unwrap();
+        s.layout("l", &points, 1.0).unwrap();
+        s.register(
+            "e",
+            r#"
+            export function setup(ctx) {
+                const s = sampler(ctx);
+                if (sampler(ctx) !== s) throw new Error("not shared");
+                const f = new Float32Array(ctx.n * 3);
+                for (let i = 0; i < ctx.n; i++) f[i * 3] = i;
+                const d2 = (i, px, py) => ((ctx.x[i] - px) / s.sx) ** 2 + ((ctx.y[i] - py) / s.sy) ** 2;
+                let checked = 0;
+                for (let px = 0; px <= 1; px += 0.0625) {
+                    for (let py = 0; py <= 1; py += 0.0625) {
+                        const by = [...Array(ctx.n).keys()].sort((a, b) => d2(a, px, py) - d2(b, px, py));
+                        // Only where the nearest LED is clearly nearest.
+                        if (d2(by[1], px, py) < 2 * d2(by[0], px, py) || d2(by[0], px, py) < 4) continue;
+                        const got = s.at(f, px, py, [0, 0, 0])[0];
+                        if (Math.abs(got - by[0]) > 1e-4) throw new Error(`at ${px},${py}: ${got}, want ${by[0]}`);
+                        checked++;
+                    }
+                }
+                if (checked < 50) throw new Error("checked only " + checked);
+            }
+            export function render(ctx) {}
+            "#,
+        )
+        .unwrap();
+        s.create("i", "e", "l", &serde_json::json!({}), &[])
+            .unwrap();
+    }
+
+    #[test]
     fn builtin_transitions_start_at_a_and_end_at_b() {
         let curtain: Vec<[f32; 3]> = (0..210)
             .map(|i| [(i / 21) as f32 / 9.0, (i % 21) as f32 / 20.0, 0.5])

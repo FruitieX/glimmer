@@ -191,7 +191,17 @@ function sampleImage(img, frame, x, y) {
  *     LEDs nearest in `ctx.u`, which isn't always the LED order).
  * At an LED's own position the result is exactly that LED's colour.
  */
+const __samplers = new WeakMap();
 function sampler(ctx) {
+  // It depends only on the LED positions, so every transition on the same
+  // light shares one (building it takes the most time on sparse layouts).
+  const hit = __samplers.get(ctx.x);
+  if (hit && hit.y === ctx.y && hit.u === ctx.u && hit.n === ctx.n) return hit.s;
+  const s = Object.freeze(__buildSampler(ctx));
+  __samplers.set(ctx.x, { y: ctx.y, u: ctx.u, n: ctx.n, s });
+  return s;
+}
+function __buildSampler(ctx) {
   const { n } = ctx;
   let x0 = Infinity,
     x1 = -Infinity,
@@ -264,12 +274,47 @@ function sampler(ctx) {
     X[i] = x[i] / sx;
     Y[i] = y[i] / sy;
   }
+  // A k-d tree over the LEDs (in place: each range's middle splits it, on x
+  // and y in turn) for the nearest LED to points far from all of them.
+  const tree = Int32Array.from({ length: n }, (_, i) => i);
+  (function build(lo, hi, depth) {
+    if (hi - lo < 2) return;
+    const P = depth & 1 ? Y : X;
+    const part = tree.subarray(lo, hi).sort((a, b) => P[a] - P[b]);
+    tree.set(part, lo);
+    const m = (lo + hi) >> 1;
+    build(lo, m, depth + 1);
+    build(m + 1, hi, depth + 1);
+  })(0, n, 0);
+  let best = -1,
+    bd = Infinity;
+  // Ties go to the lowest index, as a plain scan would pick.
+  function closest(lo, hi, depth, qx, qy) {
+    if (lo >= hi) return;
+    const m = (lo + hi) >> 1;
+    const i = tree[m];
+    const d2 = (X[i] - qx) ** 2 + (Y[i] - qy) ** 2;
+    if (d2 < bd || (d2 === bd && i < best)) {
+      bd = d2;
+      best = i;
+    }
+    const diff = depth & 1 ? qy - Y[i] : qx - X[i];
+    if (diff < 0) {
+      closest(lo, m, depth + 1, qx, qy);
+      if (diff * diff <= bd) closest(m + 1, hi, depth + 1, qx, qy);
+    } else {
+      closest(m + 1, hi, depth + 1, qx, qy);
+      if (diff * diff <= bd) closest(lo, m, depth + 1, qx, qy);
+    }
+  }
   const R2 = R * R;
   const K = 4;
 
   // The K strongest inverse-distance weights (fading to 0 at the radius)
   // at a point, normalised, into idx/w from `o`; -1 marks unused slots.
-  function weigh(px, py, idx, w, o) {
+  // `hint` is any LED (or -1), likely near: it bounds the search for the
+  // nearest LED when none is around.
+  function weigh(px, py, idx, w, o, hint = -1) {
     for (let k = 0; k < K; k++) {
       idx[o + k] = -1;
       w[o + k] = 0;
@@ -309,13 +354,13 @@ function sampler(ctx) {
       }
     }
     if (nearest < 0) {
-      for (let i = 0; i < n; i++) {
-        const d2 = (X[i] - qx) ** 2 + (Y[i] - qy) ** 2;
-        if (d2 < nd) {
-          nd = d2;
-          nearest = i;
-        }
-      }
+      // No LED in the cells around: ask the k-d tree, starting from the
+      // hint's distance.
+      best = hint;
+      bd = hint >= 0 ? (X[hint] - qx) ** 2 + (Y[hint] - qy) ** 2 : Infinity;
+      closest(0, n, 0, qx, qy);
+      nearest = best;
+      nd = bd;
     }
     let sum = 0;
     for (let s = 0; s < K; s++) sum += w[o + s];
@@ -345,7 +390,11 @@ function sampler(ctx) {
     tW = new Float32Array(rx * ry * K);
   if (!line) {
     for (let j = 0; j < ry; j++) {
-      for (let i = 0; i < rx; i++) weigh(i / (rx - 1), j / (ry - 1), tIdx, tW, (j * rx + i) * K);
+      for (let i = 0; i < rx; i++) {
+        // The neighbouring raster point's strongest LED is usually close.
+        const hint = i > 0 ? tIdx[(j * rx + i - 1) * K] : j > 0 ? tIdx[(j - 1) * rx * K] : -1;
+        weigh(i / (rx - 1), j / (ry - 1), tIdx, tW, (j * rx + i) * K, hint);
+      }
     }
   }
   const oneIdx = new Int32Array(K),
