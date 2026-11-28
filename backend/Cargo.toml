@@ -13,7 +13,7 @@ chrono-tz = "=0.10.4"
 futures-util = "=0.3.34"
 image = { version = "=0.25.10", default-features = false, features = ["gif", "png", "jpeg"] }
 rand = "=0.10.4"
-rquickjs = "=0.14.0"
+rquickjs = "=0.15.0"
 rumqttc = { version = "=0.25.1", default-features = false }
 rusqlite = { version = "=0.43.0", features = ["bundled", "backup"] }
 serde = { version = "=1.0.229", features = ["derive"] }
